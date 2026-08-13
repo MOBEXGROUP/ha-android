@@ -26,6 +26,7 @@ internal fun NavGraphBuilder.connectionScreen(
     onAuthenticated: (url: String, authCode: String, requiredMTLS: Boolean) -> Unit,
     onBackClick: () -> Unit,
     onOpenExternalLink: suspend (url: Uri) -> Unit,
+    onOpenBrowserAuth: suspend (url: String) -> Unit,
 ) {
     composable<ConnectionRoute> {
         val viewModel: ConnectionViewModel = hiltViewModel()
@@ -34,6 +35,7 @@ internal fun NavGraphBuilder.connectionScreen(
             viewModel = viewModel,
             onAuthenticated = onAuthenticated,
             onOpenExternalLink = onOpenExternalLink,
+            onOpenBrowserAuth = onOpenBrowserAuth,
         )
 
         ConnectionScreen(
@@ -55,12 +57,14 @@ internal fun HandleConnectionNavigationEvents(
     viewModel: ConnectionViewModel,
     onAuthenticated: (url: String, authCode: String, requiredMTLS: Boolean) -> Unit,
     onOpenExternalLink: suspend (url: Uri) -> Unit,
+    onOpenBrowserAuth: suspend (url: String) -> Unit,
 ) {
     LaunchedEffect(viewModel) {
         viewModel.navigationEventsFlow.collect {
             when (it) {
                 is ConnectionNavigationEvent.Authenticated -> onAuthenticated(it.url, it.authCode, it.requiredMTLS)
                 is ConnectionNavigationEvent.OpenExternalLink -> onOpenExternalLink(it.url)
+                is ConnectionNavigationEvent.OpenBrowserAuth -> onOpenBrowserAuth(it.url)
             }
         }
     }

@@ -7,6 +7,8 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
@@ -44,6 +46,7 @@ class ConnectionScreenTest {
                     webViewClient = WebViewClient(),
                     webChromeClient = WebChromeClient(),
                     onWebViewCreationFailed = {},
+                    onSignInWithBrowserClick = {},
                 )
             }
             onNodeWithTag(HA_WEBVIEW_TAG).assertIsNotDisplayed()
@@ -62,6 +65,7 @@ class ConnectionScreenTest {
                     webViewClient = WebViewClient(),
                     webChromeClient = WebChromeClient(),
                     onWebViewCreationFailed = {},
+                    onSignInWithBrowserClick = {},
                 )
             }
             onNodeWithTag(HA_WEBVIEW_TAG).assertIsDisplayed()
@@ -81,6 +85,7 @@ class ConnectionScreenTest {
                     webViewClient = WebViewClient(),
                     webChromeClient = WebChromeClient(),
                     onWebViewCreationFailed = {},
+                    onSignInWithBrowserClick = {},
                 )
             }
             onNodeWithTag(HA_WEBVIEW_TAG).assertIsDisplayed()
@@ -100,6 +105,7 @@ class ConnectionScreenTest {
                     webViewClient = WebViewClient(),
                     webChromeClient = WebChromeClient(),
                     onWebViewCreationFailed = {},
+                    onSignInWithBrowserClick = {},
                 )
             }
             onNodeWithTag(HA_WEBVIEW_TAG).assertIsNotDisplayed()
@@ -123,12 +129,38 @@ class ConnectionScreenTest {
                     webViewClient = WebViewClient(),
                     webChromeClient = WebChromeClient(),
                     onWebViewCreationFailed = {},
+                    onSignInWithBrowserClick = {},
                 )
             }
 
             activity.onBackPressedDispatcher.onBackPressed()
 
             assertTrue(backPressed)
+        }
+    }
+
+    @Test
+    fun `Given ConnectionScreen when clicking sign in with browser then triggers onSignInWithBrowserClick`() {
+        var signInWithBrowserClicked = false
+        composeTestRule.apply {
+            setContent {
+                ConnectionScreen(
+                    onBackClick = {},
+                    isLoading = false,
+                    isError = false,
+                    url = "",
+                    webViewClient = WebViewClient(),
+                    webChromeClient = WebChromeClient(),
+                    onWebViewCreationFailed = {},
+                    onSignInWithBrowserClick = {
+                        signInWithBrowserClicked = true
+                    },
+                )
+            }
+
+            onNodeWithText(stringResource(commonR.string.connection_screen_sign_in_with_browser)).performClick()
+
+            assertTrue(signInWithBrowserClicked)
         }
     }
 }

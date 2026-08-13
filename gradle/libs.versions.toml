@@ -26,6 +26,7 @@ apacheCommonsText = "1.15.0"
 appcompat = "1.7.1"
 biometric = "1.1.0"
 blurView = "version-2.0.6"
+browser = "1.9.0"
 car-versions = "1.7.0"
 changeLog = "3.8.2"
 classgraph = "4.8.184"
@@ -163,6 +164,7 @@ apache-commons-text = { module = "org.apache.commons:commons-text", version.ref 
 appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
 blurView = { module = "com.github.Dimezis:BlurView", version.ref = "blurView" }
+browser = { module = "androidx.browser:browser", version.ref = "browser" }
 car-core = { module = "androidx.car.app:app", version.ref = "car-versions" }
 car-automotive = { module = "androidx.car.app:app-automotive", version.ref = "car-versions" }
 car-projected = { module = "androidx.car.app:app-projected", version.ref = "car-versions" }

@@ -340,6 +340,25 @@
             </intent-filter>
         </activity>
 
+        <!--
+        Receives the OAuth redirect when the user signs in with the external browser during
+        onboarding, then hands the code back to the running onboarding flow.
+        -->
+        <activity
+            android:name=".onboarding.connection.BrowserAuthCallbackActivity"
+            android:exported="true"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="homeassistant"
+                    android:host="auth-callback" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".onboarding.OnboardingActivity"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation"

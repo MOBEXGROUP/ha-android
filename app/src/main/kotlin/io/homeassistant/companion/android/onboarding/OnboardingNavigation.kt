@@ -3,6 +3,7 @@ package io.homeassistant.companion.android.onboarding
 import android.app.Activity
 import android.net.Uri
 import androidx.annotation.VisibleForTesting
+import androidx.core.net.toUri
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavOptions
@@ -43,6 +44,7 @@ import io.homeassistant.companion.android.onboarding.welcome.navigation.welcomeI
 import io.homeassistant.companion.android.onboarding.welcome.navigation.welcomeScreen
 import io.homeassistant.companion.android.util.canGoBack
 import io.homeassistant.companion.android.util.compose.navigateToUri
+import io.homeassistant.companion.android.util.compose.openCustomTab
 import kotlinx.serialization.Serializable
 
 @VisibleForTesting
@@ -339,6 +341,9 @@ private fun NavGraphBuilder.commonScreens(
         onBackClick = navController::popBackStack,
         onOpenExternalLink = {
             navController.navigateToUri(it.toString(), onShowSnackbar = onShowSnackbar)
+        },
+        onOpenBrowserAuth = {
+            navController.openCustomTab(it.toUri(), onShowSnackbar = onShowSnackbar)
         },
     )
 }

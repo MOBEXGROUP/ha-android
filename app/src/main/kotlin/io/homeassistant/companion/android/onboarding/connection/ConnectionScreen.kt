@@ -6,12 +6,14 @@ import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -22,9 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import io.homeassistant.companion.android.R
+import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.compose.composable.HAPlainButton
+import io.homeassistant.companion.android.common.compose.theme.HADimens
 import io.homeassistant.companion.android.common.compose.theme.HAThemeForPreview
 import io.homeassistant.companion.android.common.compose.theme.LocalHAColorScheme
 import io.homeassistant.companion.android.frontend.filechooser.FileChooserEffect
@@ -59,6 +65,7 @@ internal fun ConnectionScreen(onBackClick: () -> Unit, viewModel: ConnectionView
         pendingFileChooser = pendingFileChooser,
         onBackClick = onBackClick,
         onWebViewCreationFailed = viewModel::onWebViewCreationFailed,
+        onSignInWithBrowserClick = viewModel::onSignInWithBrowserClick,
         modifier = modifier,
     )
 }
@@ -72,6 +79,7 @@ internal fun ConnectionScreen(
     webChromeClient: WebChromeClient,
     onBackClick: () -> Unit,
     onWebViewCreationFailed: (Throwable) -> Unit,
+    onSignInWithBrowserClick: () -> Unit,
     modifier: Modifier = Modifier,
     pendingFileChooser: FileChooserRequest? = null,
 ) {
@@ -88,18 +96,38 @@ internal fun ConnectionScreen(
         )
         if (!isError) {
             url?.let {
-                HAWebView(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.safeDrawing),
-                    configure = {
-                        this.webViewClient = webViewClient
-                        this.webChromeClient = webChromeClient
-                        loadUrl(url)
-                    },
-                    onBackPressed = onBackClick,
-                    onWebViewCreationFailed = onWebViewCreationFailed,
-                )
+                ) {
+                    HAWebView(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        configure = {
+                            this.webViewClient = webViewClient
+                            this.webChromeClient = webChromeClient
+                            loadUrl(url)
+                        },
+                        onBackPressed = onBackClick,
+                        onWebViewCreationFailed = onWebViewCreationFailed,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(LocalHAColorScheme.current.colorSurfaceDefault),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        HAPlainButton(
+                            text = stringResource(commonR.string.connection_screen_sign_in_with_browser),
+                            onClick = onSignInWithBrowserClick,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = HADimens.SPACE1),
+                        )
+                    }
+                }
             } ?: Timber.i("ConnectionScreen: url is null")
         } else {
             ErrorPlaceholder()
@@ -141,6 +169,7 @@ private fun ConnectionScreenPreview() {
             webChromeClient = WebChromeClient(),
             onBackClick = {},
             onWebViewCreationFailed = {},
+            onSignInWithBrowserClick = {},
             modifier = Modifier.fillMaxSize(),
         )
     }

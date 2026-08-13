@@ -22,6 +22,7 @@ class ConnectionScreenshotTest {
                 webChromeClient = WebChromeClient(),
                 onBackClick = {},
                 onWebViewCreationFailed = {},
+                onSignInWithBrowserClick = {},
             )
         }
     }
@@ -39,6 +40,7 @@ class ConnectionScreenshotTest {
                 webChromeClient = WebChromeClient(),
                 onBackClick = {},
                 onWebViewCreationFailed = {},
+                onSignInWithBrowserClick = {},
             )
         }
     }
@@ -56,6 +58,7 @@ class ConnectionScreenshotTest {
                 webChromeClient = WebChromeClient(),
                 onBackClick = {},
                 onWebViewCreationFailed = {},
+                onSignInWithBrowserClick = {},
             )
         }
     }

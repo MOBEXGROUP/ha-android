@@ -54,6 +54,7 @@ class ConnectionNavigationTest {
                     onRequiredMTLS = requiredMTLS
                 },
                 onOpenExternalLink = {},
+                onOpenBrowserAuth = {},
             )
         }
 
@@ -88,6 +89,7 @@ class ConnectionNavigationTest {
                 onOpenExternalLink = {
                     onOpenExternalLink = it
                 },
+                onOpenBrowserAuth = {},
             )
         }
 
@@ -99,5 +101,37 @@ class ConnectionNavigationTest {
         composeTestRule.awaitIdle()
 
         assertEquals(event.url, onOpenExternalLink)
+    }
+
+    @Test
+    fun `Given HandleConnectionNavigationEvents when viewModel emits OpenBrowserAuth then invoke onOpenBrowserAuth`() = runTest {
+        val sharedFlow = TestSharedFlow<ConnectionNavigationEvent>()
+
+        val viewModel = mockk<ConnectionViewModel> {
+            every { navigationEventsFlow } returns sharedFlow
+        }
+
+        var onOpenBrowserAuth: String? = null
+
+        composeTestRule.setContent {
+            HandleConnectionNavigationEvents(
+                viewModel,
+                onAuthenticated = { _, _, _ ->
+                },
+                onOpenExternalLink = {},
+                onOpenBrowserAuth = {
+                    onOpenBrowserAuth = it
+                },
+            )
+        }
+
+        val event = ConnectionNavigationEvent.OpenBrowserAuth("https://example.com/auth/authorize")
+            .apply {
+                sharedFlow.emit(this)
+            }
+
+        composeTestRule.awaitIdle()
+
+        assertEquals(event.url, onOpenBrowserAuth)
     }
 }

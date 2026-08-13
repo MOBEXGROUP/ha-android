@@ -58,11 +58,17 @@ internal sealed interface ConnectionNavigationEvent {
      * @property url The [Uri] of the link to open.
      */
     data class OpenExternalLink(val url: Uri) : ConnectionNavigationEvent
-}
 
-private const val AUTH_CALLBACK_SCHEME = "homeassistant"
-private const val AUTH_CALLBACK_HOST = "auth-callback"
-private const val AUTH_CALLBACK = "$AUTH_CALLBACK_SCHEME://$AUTH_CALLBACK_HOST"
+    /**
+     * Emitted to open the sign-in in the external browser instead of the WebView.
+     *
+     * Emitted automatically once the authentication URL is built, and again whenever the user
+     * taps the sign-in with browser button (e.g. after coming back without having signed in).
+     *
+     * @property url The URL of the authentication page to open in the browser.
+     */
+    data class OpenBrowserAuth(val url: String) : ConnectionNavigationEvent
+}
 
 @HiltViewModel
 internal class ConnectionViewModel @VisibleForTesting constructor(
@@ -70,6 +76,7 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
     webViewClientFactory: HAWebViewClientFactory,
     private val connectivityCheckRepository: ConnectivityCheckRepository,
     private val fileChooserManager: FileChooserManager,
+    browserAuthManager: BrowserAuthManager,
 ) : ViewModel(),
     FrontendConnectionErrorStateProvider {
 
@@ -79,11 +86,13 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
         webViewClientFactory: HAWebViewClientFactory,
         connectivityCheckRepository: ConnectivityCheckRepository,
         fileChooserManager: FileChooserManager,
+        browserAuthManager: BrowserAuthManager,
     ) : this(
         savedStateHandle.toRoute<ConnectionRoute>().url,
         webViewClientFactory,
         connectivityCheckRepository,
         fileChooserManager,
+        browserAuthManager,
     )
 
     /**
@@ -166,6 +175,34 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
         viewModelScope.launch {
             buildAuthUrl(rawUrl)
         }
+        // A code received while no connection screen was waiting for it belongs to an earlier
+        // abandoned sign-in and cannot be valid for this screen.
+        browserAuthManager.clearPendingAuthCode()
+        viewModelScope.launch {
+            browserAuthManager.authCodeFlow.collect { authCode ->
+                // The external browser cannot use the app's mTLS client certificate, so a sign-in
+                // completed there never required mTLS.
+                emitAuthenticated(authCode = authCode, requiredMTLS = false)
+            }
+        }
+    }
+
+    /**
+     * Opens the authentication page in the external browser instead of the WebView.
+     *
+     * Unlike the WebView, the browser shares its session state (e.g. cookies) with the rest of the
+     * system browser, letting the user reuse an existing session of an SSO provider configured on
+     * the server. The redirect back to [AUTH_CALLBACK] is received by [BrowserAuthCallbackActivity]
+     * and handed back to this screen through [BrowserAuthManager].
+     *
+     * Called automatically once the authentication URL is built; the button on the screen calls
+     * it again as a fallback when the user comes back without having signed in.
+     */
+    fun onSignInWithBrowserClick() {
+        val authUrl = urlFlow.value ?: return
+        viewModelScope.launch {
+            _navigationEventsFlow.emit(ConnectionNavigationEvent.OpenBrowserAuth(authUrl))
+        }
     }
 
     private suspend fun buildAuthUrl(base: String) {
@@ -185,6 +222,10 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
             }
             Timber.d("Auth url is: $authUrl")
             _urlFlow.emit(authUrl)
+            // Directly hand the sign-in to the external browser so an existing browser session
+            // (e.g. of an SSO provider) can be reused. The WebView below keeps loading the same
+            // page as a fallback for when the user returns without having signed in.
+            _navigationEventsFlow.emit(ConnectionNavigationEvent.OpenBrowserAuth(authUrl))
         } catch (e: Exception) {
             Timber.e(e, "Unable to build authentication URL")
             onError(
@@ -228,17 +269,9 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
         return if (url.isOpaque) {
             false // Not intercepted: opaque is not handled by app
         } else if (url.scheme == AUTH_CALLBACK_SCHEME && url.host == AUTH_CALLBACK_HOST) {
-            val code = url.getQueryParameter("code")
+            val code = url.getQueryParameter(AUTH_CALLBACK_CODE_PARAMETER)
             if (!code.isNullOrBlank()) {
-                viewModelScope.launch {
-                    _navigationEventsFlow.emit(
-                        ConnectionNavigationEvent.Authenticated(
-                            url = effectiveUrl.value,
-                            authCode = code,
-                            requiredMTLS = isTLSClientAuthNeeded,
-                        ),
-                    )
-                }
+                emitAuthenticated(authCode = code, requiredMTLS = isTLSClientAuthNeeded)
                 true // Intercepted: Authentication successful
             } else {
                 Timber.w("Auth code is missing from the auth callback")
@@ -252,6 +285,19 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
             true // Intercepted: External link
         } else {
             false // Default: Not intercepted
+        }
+    }
+
+    /** Emits [ConnectionNavigationEvent.Authenticated] for the current [effectiveUrl]. */
+    private fun emitAuthenticated(authCode: String, requiredMTLS: Boolean) {
+        viewModelScope.launch {
+            _navigationEventsFlow.emit(
+                ConnectionNavigationEvent.Authenticated(
+                    url = effectiveUrl.value,
+                    authCode = authCode,
+                    requiredMTLS = requiredMTLS,
+                ),
+            )
         }
     }
 

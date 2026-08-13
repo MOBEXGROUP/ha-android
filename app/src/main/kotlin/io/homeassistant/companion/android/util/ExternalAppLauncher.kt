@@ -1,7 +1,11 @@
 package io.homeassistant.companion.android.util
 
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.webkit.WebViewCompat
+import io.homeassistant.companion.android.BuildConfig
 import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.util.launchAppOrStore
 import timber.log.Timber
@@ -24,4 +28,22 @@ suspend fun Context.updateSystemWebView(onShowSnackbar: suspend (message: String
         return
     }
     launchAppOrStore(webViewPackage, onShowSnackbar)
+}
+
+/**
+ * Opens [uri] in a Custom Tab of the user's default browser.
+ *
+ * Unlike a WebView, the Custom Tab shares its session state (e.g. cookies) with the browser,
+ * letting the user reuse existing sessions such as a sign-in at an SSO provider. When no browser
+ * is available to open the tab, [onShowSnackbar] surfaces the failure to the user.
+ */
+suspend fun Context.openCustomTab(uri: Uri, onShowSnackbar: suspend (message: String, action: String?) -> Boolean) {
+    try {
+        CustomTabsIntent.Builder().build().launchUrl(this, uri)
+    } catch (e: ActivityNotFoundException) {
+        // The exception embeds the intent including its data URI, so it is only logged in debug
+        // builds to avoid leaking the server URL in release logs.
+        Timber.e(e.takeIf { BuildConfig.DEBUG }, "No browser available to open a Custom Tab")
+        onShowSnackbar(getString(commonR.string.fail_to_navigate_to_uri, uri.toString()), null)
+    }
 }
