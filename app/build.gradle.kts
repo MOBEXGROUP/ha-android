@@ -10,6 +10,18 @@ android {
     useLibrary("android.car")
 
     defaultConfig {
+        // MOBEX internal distribution: an own application id lets the app be uploaded as a
+        // managed Google Play private app alongside the official Play Store app. The namespace
+        // (and therefore all code and resources) stays io.homeassistant.companion.android.
+        applicationId = "de.mobex.homeassistant"
+        // The flavor convention plugin derived APPLICATION_IDS from the original application id
+        // before this override runs, so redefine it (used for NFC tag application records).
+        buildConfigField(
+            "String[]",
+            "APPLICATION_IDS",
+            "{\"de.mobex.homeassistant\", \"de.mobex.homeassistant.minimal\"}",
+        )
+
         manifestPlaceholders["sentryRelease"] = "$applicationId@$versionName"
         manifestPlaceholders["sentryDsn"] = System.getenv("SENTRY_DSN") ?: ""
 
