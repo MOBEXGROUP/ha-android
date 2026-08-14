@@ -1,0 +1,111 @@
+name: MOBEX APK
+
+# Builds the signed minimal release APK for internal distribution and publishes it
+# as a GitHub release, so it can be uploaded to Intune without a local build.
+# Requires the repository secrets MOBEX_KEYSTORE and MOBEX_KEYSTORE_PASSWORD,
+# see docs/mobex-work-profile.md.
+
+on: # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - browser-sso
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobex-apk
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build signed minimal release APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The version name is reckoned from the git tags, so the full history is needed.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+
+      - name: Mock google-services.json
+        # The minimal flavor does not use Firebase, but the Google Services plugin still
+        # requires a configuration file for every module it is applied to.
+        run: |
+          cp .github/mock-google-services.json app/google-services.json
+          cp .github/mock-google-services.json wear/google-services.json
+          cp .github/mock-google-services.json automotive/google-services.json
+
+      - name: Decode keystore
+        env:
+          MOBEX_KEYSTORE: ${{ secrets.MOBEX_KEYSTORE }}
+        run: |
+          if [ -z "$MOBEX_KEYSTORE" ]; then
+            echo "::error::Secret MOBEX_KEYSTORE is missing, see docs/mobex-work-profile.md"
+            exit 1
+          fi
+          echo "$MOBEX_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/mobex-release.keystore"
+
+      - name: Determine version code
+        id: version
+        # Intune and Android only accept an update when the version code increases. Minutes
+        # since the epoch is strictly increasing, unique per minute and stays well below the
+        # version code limit of 2100000000 (~29.8 million as of 2026).
+        run: |
+          {
+            echo "code=$(( $(date -u +%s) / 60 ))"
+            echo "date=$(date -u +'%Y-%m-%d %H:%M UTC')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build minimal release APK
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/mobex-release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.MOBEX_KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: mobex-ha
+          KEYSTORE_ALIAS_PASSWORD: ${{ secrets.MOBEX_KEYSTORE_PASSWORD }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: ./gradlew :app:assembleMinimalRelease
+
+      - name: Prepare APK
+        id: apk
+        run: |
+          name="home-assistant-mobex-${{ steps.version.outputs.code }}.apk"
+          cp app/build/outputs/apk/minimal/release/app-minimal-release.apk "$RUNNER_TEMP/$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "path=$RUNNER_TEMP/$name" >> "$GITHUB_OUTPUT"
+
+      - name: Archive APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobex-apk
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 90
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "mobex-${{ steps.version.outputs.code }}" \
+            "${{ steps.apk.outputs.path }}" \
+            --title "MOBEX APK ${{ steps.version.outputs.date }}" \
+            --notes "Interner Build der Home Assistant App mit Browser-Login.
+
+          | | |
+          |---|---|
+          | Paket | \`de.mobex.homeassistant.minimal\` |
+          | Version code | \`${{ steps.version.outputs.code }}\` |
+          | Commit | ${{ github.sha }} |
+
+          Upload nach Intune: siehe [docs/mobex-work-profile.md](https://github.com/${{ github.repository }}/blob/browser-sso/docs/mobex-work-profile.md)."

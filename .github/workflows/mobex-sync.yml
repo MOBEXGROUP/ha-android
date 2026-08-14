@@ -1,0 +1,73 @@
+name: MOBEX Sync upstream
+
+# Keeps this fork current: fast-forwards main to home-assistant/android and opens a pull
+# request that merges those upstream changes into the browser-sso branch.
+
+on: # yamllint disable-line rule:truthy
+  schedule:
+    - cron: "0 4 * * 1" # Every Monday at 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Update main and open the sync pull request
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/home-assistant/android.git
+          git fetch upstream main
+
+      - name: Fast-forward main
+        run: |
+          # Never forced: the push fails when main is not a direct ancestor of upstream,
+          # which means the fork carries commits on main that would otherwise be lost.
+          if git push origin refs/remotes/upstream/main:refs/heads/main; then
+            echo "main is up to date with upstream"
+          else
+            echo "::warning::main could not be updated automatically. This is expected when \
+            the upstream changes touch .github/workflows, which GITHUB_TOKEN is not allowed \
+            to push. Press 'Sync fork' on the repository page once, then run this workflow again."
+          fi
+
+      - name: Open the sync pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main browser-sso
+
+          if git merge-base --is-ancestor origin/main origin/browser-sso; then
+            echo "browser-sso already contains everything from main, nothing to sync"
+            exit 0
+          fi
+
+          existing=$(gh pr list --base browser-sso --head main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Sync pull request #$existing is already open"
+            exit 0
+          fi
+
+          gh pr create --base browser-sso --head main \
+            --title "Sync upstream ($(date -u +%Y-%m-%d))" \
+            --body "Automatischer Sync von [home-assistant/android](https://github.com/home-assistant/android).
+
+          Merge diesen Pull Request, um den Branch \`browser-sso\` auf den aktuellen Upstream-Stand zu bringen.
+          Danach baut die Pipeline automatisch eine neue APK und veröffentlicht sie als Release.
+
+          Bei Konflikten (der Merge-Button ist dann gesperrt) muss der Merge lokal aufgelöst werden:
+
+          \`\`\`bash
+          git fetch origin
+          git switch browser-sso && git merge origin/main
+          # Konflikte lösen, dann:
+          ./gradlew ktlintFormat && ./gradlew :app:testFullDebugUnitTest
+          git push
+          \`\`\`"

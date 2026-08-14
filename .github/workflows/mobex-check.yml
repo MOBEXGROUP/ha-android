@@ -1,0 +1,55 @@
+name: MOBEX Check
+
+# Verifies that the branch still builds and passes its tests, in particular after an
+# upstream sync. Runs without any repository secret so the result is always meaningful.
+
+on: # yamllint disable-line rule:truthy
+  pull_request:
+    branches:
+      - browser-sso
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobex-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, tests and debug build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+
+      - name: Mock google-services.json
+        run: |
+          cp .github/mock-google-services.json app/google-services.json
+          cp .github/mock-google-services.json wear/google-services.json
+          cp .github/mock-google-services.json automotive/google-services.json
+
+      - name: Check code style
+        run: ./gradlew ktlintCheck :build-logic:convention:ktlintCheck --continue
+
+      - name: Run unit tests
+        # The full flavor is used because the minimal flavor cannot compile the Wear unit
+        # tests, which reference classes that only exist in the full flavor.
+        run: ./gradlew :app:testFullDebugUnitTest
+
+      - name: Build the distributed variant
+        run: ./gradlew :app:assembleMinimalDebug
