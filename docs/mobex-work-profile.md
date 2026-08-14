@@ -47,7 +47,9 @@ Für Updates wird im **selben Intune-App-Eintrag** die neue APK hochgeladen (Eig
 | Branch | Zweck |
 |---|---|
 | `main` | Unveränderte Kopie von [home-assistant/android](https://github.com/home-assistant/android). Nie direkt committen — nur so bleibt der „Sync fork"-Button nutzbar. |
-| `browser-sso` | Der ausgelieferte Stand: `main` plus Browser-Login und MOBEX-Paketierung. Hier bauen die Pipelines. |
+| `browser-sso` | Der ausgelieferte Stand: `main` plus Browser-Login und MOBEX-Paketierung. Hier bauen die Pipelines. Default-Branch, weil GitHub geplante Workflows ausschließlich aus dem Default-Branch startet. Gegen Force-Push und Löschen per Ruleset geschützt. |
+
+> **Beim „Sync fork"-Button vorher auf `main` umschalten.** Der Button bezieht sich immer auf den gerade angezeigten Branch; auf `browser-sso` bietet er nur „Discard commits" an, was alle Anpassungen verwerfen würde. Das Ruleset blockiert diesen Fall, die Meldung ist dann aber verwirrend.
 
 ## Upstream-Änderungen übernehmen
 
