@@ -14,6 +14,8 @@ import android.webkit.WebViewClient.ERROR_TIMEOUT
 import android.webkit.WebViewClient.ERROR_UNSUPPORTED_AUTH_SCHEME
 import androidx.annotation.StringRes
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.data.keychain.ClientCertProvider
+import io.homeassistant.companion.android.common.data.keychain.ClientCertificate
 import io.homeassistant.companion.android.common.data.keychain.KeyChainRepository
 import io.homeassistant.companion.android.frontend.error.FrontendConnectionError
 import io.homeassistant.companion.android.testing.unit.MainDispatcherJUnit5Extension
@@ -35,22 +37,29 @@ import org.junit.jupiter.params.provider.ValueSource
 class HAWebViewClientTest {
 
     private val keyChainRepository: KeyChainRepository = mockk(relaxed = true)
+    private val clientCertProvider = object : ClientCertProvider {
+        override val certificate: ClientCertificate? = null
+    }
     private val currentUrlFlow = MutableStateFlow<String?>(null)
     private var capturedError: FrontendConnectionError? = null
+    private val subresourceSslErrorUrls = mutableListOf<String?>()
 
     private lateinit var webViewClient: HAWebViewClient
 
     @BeforeEach
     fun setup() {
         capturedError = null
+        subresourceSslErrorUrls.clear()
         webViewClient = HAWebViewClient(
             keyChainRepository = keyChainRepository,
+            clientCertProvider = clientCertProvider,
             currentUrlFlow = currentUrlFlow,
             onFrontendError = { capturedError = it },
             onCrash = null,
             onUrlIntercepted = null,
             onPageFinished = null,
             onReceivedHttpAuthRequest = null,
+            onSubresourceSslError = { subresourceSslErrorUrls += it },
         )
     }
 
@@ -59,6 +68,7 @@ class HAWebViewClientTest {
         var finishedUrl: String? = null
         val client = HAWebViewClient(
             keyChainRepository = keyChainRepository,
+            clientCertProvider = clientCertProvider,
             currentUrlFlow = currentUrlFlow,
             onFrontendError = { capturedError = it },
             onCrash = null,
@@ -111,16 +121,36 @@ class HAWebViewClientTest {
         assertEquals(commonR.string.error_ssl, capturedError?.message)
     }
 
-    private fun testSslError(primaryError: Int, @StringRes expectedMessageRes: Int) {
-        val details = "SSL Error: $primaryError"
-        val sslError = mockk<SslError> {
-            every { this@mockk.primaryError } returns primaryError
-            every { this@mockk.toString() } returns details
-        }
+    @Test
+    fun `Given SSL error for a subresource when onReceivedSslError then reports its url instead of failing`() {
+        currentUrlFlow.value = "http://homeassistant.local:8123/auth/authorize"
+        val subresourceUrl = "https://analytics.example.com/beacon.min.js"
+        val sslError = mockSslError(SslError.SSL_UNTRUSTED, url = subresourceUrl)
 
         webViewClient.onReceivedSslError(null, null, sslError)
 
-        assertFrontendError<FrontendConnectionError.SslError>(expectedMessageRes, details, SslError::class)
+        assertEquals(null, capturedError)
+        assertEquals(listOf(subresourceUrl), subresourceSslErrorUrls)
+    }
+
+    private fun testSslError(primaryError: Int, @StringRes expectedMessageRes: Int) {
+        currentUrlFlow.value = "http://homeassistant.local:8123/auth/authorize"
+        val sslError = mockSslError(primaryError, url = "http://homeassistant.local:8123/auth/authorize")
+
+        webViewClient.onReceivedSslError(null, null, sslError)
+
+        assertFrontendError<FrontendConnectionError.SslError>(
+            expectedMessageRes,
+            "SSL Error: $primaryError",
+            SslError::class,
+        )
+        assertTrue(subresourceSslErrorUrls.isEmpty())
+    }
+
+    private fun mockSslError(primaryError: Int, url: String): SslError = mockk {
+        every { this@mockk.primaryError } returns primaryError
+        every { this@mockk.url } returns url
+        every { this@mockk.toString() } returns "SSL Error: $primaryError"
     }
 
     @Test
@@ -392,6 +422,7 @@ class HAWebViewClientTest {
         var capturedRealm: String? = null
         val client = HAWebViewClient(
             keyChainRepository = keyChainRepository,
+            clientCertProvider = clientCertProvider,
             currentUrlFlow = currentUrlFlow,
             onFrontendError = { capturedError = it },
             onCrash = null,
@@ -424,6 +455,7 @@ class HAWebViewClientTest {
         var captured: Boolean? = null
         val client = HAWebViewClient(
             keyChainRepository = keyChainRepository,
+            clientCertProvider = clientCertProvider,
             currentUrlFlow = currentUrlFlow,
             onFrontendError = { capturedError = it },
             onCrash = null,
