@@ -149,7 +149,7 @@ class ConnectionScreenTest {
                     isLoading = false,
                     isError = false,
                     url = "",
-                    webViewClient = WebViewClient(),
+                    getWebViewClient = { WebViewClient() },
                     webChromeClient = WebChromeClient(),
                     onWebViewCreationFailed = {},
                     onSignInWithBrowserClick = {
