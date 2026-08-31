@@ -55,7 +55,10 @@ jobs:
             exit 0
           fi
 
-          gh pr create --base browser-sso --head main \
+          # --no-maintainer-edit is required: this repository is a fork, and the GITHUB_TOKEN
+          # (a GitHub App token) may not grant upstream maintainers edit rights on fork PRs.
+          # Without it createPullRequest fails with "Resource not accessible by integration".
+          gh pr create --base browser-sso --head main --no-maintainer-edit \
             --title "Sync upstream ($(date -u +%Y-%m-%d))" \
             --body "Automatischer Sync von [home-assistant/android](https://github.com/home-assistant/android).
 
