@@ -98,7 +98,6 @@ class AndroidApplicationDependenciesConventionPlugin : Plugin<Project> {
                     "implementation"(libs.bundles.paging)
 
                     "implementation"(libs.reorderable)
-                    "implementation"(libs.changeLog)
                     "implementation"(libs.aboutlibraries.compose.m3)
 
                     "implementation"(libs.zxing)
