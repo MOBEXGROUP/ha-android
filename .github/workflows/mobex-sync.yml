@@ -49,28 +49,37 @@ jobs:
             exit 0
           fi
 
-          existing=$(gh pr list --base browser-sso --head main --state open --json number --jq '.[0].number // empty')
+          existing=$(gh pr list --repo "$GITHUB_REPOSITORY" --base browser-sso --head main --state open --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             echo "Sync pull request #$existing is already open"
             exit 0
           fi
 
-          # --no-maintainer-edit is required: this repository is a fork, and the GITHUB_TOKEN
-          # (a GitHub App token) may not grant upstream maintainers edit rights on fork PRs.
-          # Without it createPullRequest fails with "Resource not accessible by integration".
-          gh pr create --base browser-sso --head main --no-maintainer-edit \
-            --title "Sync upstream ($(date -u +%Y-%m-%d))" \
-            --body "Automatischer Sync von [home-assistant/android](https://github.com/home-assistant/android).
+          body=$(cat <<'EOF'
+          Automatischer Sync von [home-assistant/android](https://github.com/home-assistant/android).
 
-          Merge diesen Pull Request, um den Branch \`browser-sso\` auf den aktuellen Upstream-Stand zu bringen.
+          Merge diesen Pull Request, um den Branch `browser-sso` auf den aktuellen Upstream-Stand zu bringen.
           Danach baut die Pipeline automatisch eine neue APK und veröffentlicht sie als Release.
 
           Bei Konflikten (der Merge-Button ist dann gesperrt) muss der Merge lokal aufgelöst werden:
 
-          \`\`\`bash
+          ```bash
           git fetch origin
           git switch browser-sso && git merge origin/main
           # Konflikte lösen, dann:
           ./gradlew ktlintFormat && ./gradlew :app:testFullDebugUnitTest
           git push
-          \`\`\`"
+          ```
+          EOF
+          )
+
+          # The REST endpoint is used instead of `gh pr create`: gh's GraphQL
+          # createPullRequest mutation rejects the GITHUB_TOKEN on this fork with
+          # "Resource not accessible by integration" even though pull-requests: write
+          # is granted, while REST accepts the same token and reports precise errors.
+          gh api "repos/${GITHUB_REPOSITORY}/pulls" \
+            -f title="Sync upstream ($(date -u +%Y-%m-%d))" \
+            -f head=main \
+            -f base=browser-sso \
+            -f body="$body" \
+            --jq '.html_url'
