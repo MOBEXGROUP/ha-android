@@ -1,9 +1,6 @@
 name: E2E
 
 on: # yamllint disable-line rule:truthy
-  schedule:
-    # Every morning at 05:00 UTC, on the default branch.
-    - cron: "0 5 * * *"
   # Manual run on any branch carrying this workflow.
   workflow_dispatch:
     inputs:
