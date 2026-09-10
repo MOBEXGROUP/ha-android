@@ -48,6 +48,19 @@ jobs:
           cp .github/mock-google-services.json wear/google-services.json
           cp .github/mock-google-services.json automotive/google-services.json
 
+      - name: Download app translations
+        env:
+          # Update alongside upstream syncs; use the public release assets also used by F-Droid.
+          TRANSLATIONS_VERSION: "2026.8.3"
+        run: |
+          release_url="https://github.com/home-assistant/android/releases/download/$TRANSLATIONS_VERSION"
+          curl --fail --location --silent --show-error "$release_url/strings.zip" -o "$RUNNER_TEMP/strings.zip"
+          curl --fail --location --silent --show-error "$release_url/locales_config.xml" -o app/src/main/res/xml/locales_config.xml
+          # Preserve the fork's English source strings, which are also included in the archive.
+          unzip -n -q "$RUNNER_TEMP/strings.zip" -d .
+          test -s common/src/main/res/values-de/strings.xml
+          grep -q 'android:name="de"' app/src/main/res/xml/locales_config.xml
+
       - name: Decode keystore
         env:
           MOBEX_KEYSTORE: ${{ secrets.MOBEX_KEYSTORE }}

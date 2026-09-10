@@ -19,6 +19,8 @@ Die eigene Package-ID ist nötig, weil `io.homeassistant.companion.android` im P
 
 Die aktuelle APK liegt unter [Releases](../../releases) und wird bei jeder Änderung am Branch `browser-sso` automatisch neu gebaut. Der Dateiname enthält den Version Code, z. B. `home-assistant-mobex-29766240.apk`.
 
+Der APK-Workflow lädt die App-Übersetzungen und die Sprachliste aus einem öffentlichen Home-Assistant-Release; ein Lokalise-Zugang ist dafür nicht erforderlich. Bei Upstream-Updates die Variable `TRANSLATIONS_VERSION` in `.github/workflows/mobex-apk.yml` auf ein zum Quellstand passendes Release aktualisieren und den APK-Build prüfen.
+
 ## Upload in Intune (einmalig)
 
 1. **Intune Admin Center** → **Apps** → **Android** → **Hinzufügen**
