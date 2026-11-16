@@ -8,18 +8,24 @@ on: # yamllint disable-line rule:truthy
     - cron: "0 4 * * 1" # Every Monday at 04:00 UTC
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false # Never cancel a push to main in flight
+
+permissions: {}
 
 jobs:
   sync:
     name: Update main and open the sync pull request
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Push the upstream commits to main
+      pull-requests: write # Open the sync pull request
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: true # Needed to push the upstream commits to main
 
       - name: Fetch upstream
         run: |
