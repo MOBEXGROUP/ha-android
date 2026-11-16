@@ -160,6 +160,7 @@ class ConnectionScreenTest {
                     onSignInWithBrowserClick = {
                         signInWithBrowserClicked = true
                     },
+                    webViewDebugEnabled = null,
                 )
             }
 
