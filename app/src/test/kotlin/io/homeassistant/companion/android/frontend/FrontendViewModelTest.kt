@@ -18,6 +18,8 @@ import io.homeassistant.companion.android.common.data.connectivity.ConnectivityC
 import io.homeassistant.companion.android.common.data.connectivity.ConnectivityCheckResult
 import io.homeassistant.companion.android.common.data.connectivity.ConnectivityCheckState
 import io.homeassistant.companion.android.common.data.integration.IntegrationRepository
+import io.homeassistant.companion.android.common.data.keychain.ClientCertProvider
+import io.homeassistant.companion.android.common.data.keychain.ClientCertificate
 import io.homeassistant.companion.android.common.data.keychain.KeyChainRepository
 import io.homeassistant.companion.android.common.data.prefs.PrefsRepository
 import io.homeassistant.companion.android.common.data.prefs.ScreenOrientation
@@ -40,8 +42,10 @@ import io.homeassistant.companion.android.frontend.exoplayer.ExoPlayerUiState
 import io.homeassistant.companion.android.frontend.exoplayer.FrontendExoPlayerManager
 import io.homeassistant.companion.android.frontend.externalbus.FrontendExternalBusRepository
 import io.homeassistant.companion.android.frontend.externalbus.incoming.HapticType
+import io.homeassistant.companion.android.frontend.externalbus.incoming.MatterShareDevicePayload
 import io.homeassistant.companion.android.frontend.externalbus.outgoing.SuccessResultMessage
-import io.homeassistant.companion.android.frontend.filechooser.FileChooserManager
+import io.homeassistant.companion.android.frontend.filechooser.FileChooserResult
+import io.homeassistant.companion.android.frontend.filechooser.FrontendFileChooserHandler
 import io.homeassistant.companion.android.frontend.gesture.FrontendGestureManager
 import io.homeassistant.companion.android.frontend.gesture.GestureResult
 import io.homeassistant.companion.android.frontend.handler.FrontendBusObserver
@@ -71,6 +75,7 @@ import io.mockk.mockkStatic
 import io.mockk.runs
 import io.mockk.unmockkStatic
 import io.mockk.verify
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -78,10 +83,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -157,7 +164,10 @@ class FrontendViewModelTest {
         serverId: Int = this.serverId,
         path: String? = null,
         dialogManager: FrontendDialogManager = FrontendDialogManager(),
-        fileChooserManager: FileChooserManager = FileChooserManager(),
+        fileChooserHandler: FrontendFileChooserHandler = FrontendFileChooserHandler(
+            cameraCaptureRepository = mockk(relaxed = true),
+            permissionManager = permissionManager,
+        ),
         httpAuthHandler: FrontendHttpAuthHandler = FrontendHttpAuthHandler(
             authenticationDao = mockk(relaxed = true),
             clock = FakeClock(),
@@ -180,7 +190,7 @@ class FrontendViewModelTest {
             gestureManager = gestureManager,
             prefsRepository = prefsRepository,
             dialogManager = dialogManager,
-            fileChooserManager = fileChooserManager,
+            fileChooserHandler = fileChooserHandler,
             httpAuthHandler = httpAuthHandler,
             exoPlayerManager = exoPlayerManager,
             improvHandler = improvHandler,
@@ -234,7 +244,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given app scheme url when intercepted then emits LaunchApp event and intercepts`() = runTest {
+        fun `Given app scheme url when intercepted then sends LaunchApp event and intercepts`() = runTest {
             val (viewModel, intercept) = createViewModelWithUrlInterceptCapture()
 
             viewModel.events.test {
@@ -247,7 +257,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given intent scheme url when intercepted then emits LaunchIntent event and intercepts`() = runTest {
+        fun `Given intent scheme url when intercepted then sends LaunchIntent event and intercepts`() = runTest {
             val intentUri = "intent://scan/#Intent;scheme=zxing;package=com.google.zxing;end"
             val (viewModel, intercept) = createViewModelWithUrlInterceptCapture()
 
@@ -261,7 +271,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given external url not matching server origin when intercepted then emits OpenExternalLink and intercepts`() = runTest {
+        fun `Given external url not matching server origin when intercepted then sends OpenExternalLink and intercepts`() = runTest {
             mockkStatic("io.homeassistant.companion.android.util.UrlUtilKt")
             try {
                 every { any<Uri>().hasSameOrigin(any<String>()) } returns false
@@ -281,7 +291,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given url matching server origin when intercepted then emits no event and lets WebView load`() = runTest {
+        fun `Given url matching server origin when intercepted then sends no event and lets WebView load`() = runTest {
             mockkStatic("io.homeassistant.companion.android.util.UrlUtilKt")
             try {
                 every { any<Uri>().hasSameOrigin(any<String>()) } returns true
@@ -386,6 +396,31 @@ class FrontendViewModelTest {
             val state = assertInstanceOf(FrontendViewState.Error::class.java, viewModel.viewState.value)
             assertInstanceOf(FrontendConnectionError.Unreachable::class.java, state.error)
             assertEquals(errorActions(state.error, isInternalConnection = false), state.actions)
+        }
+
+        @Test
+        fun `Given external url target when loading then sends OpenExternalLink and loads the server without it`() = runTest {
+            val externalUrl = "https://example.com/"
+            val externalTarget = FrontendTarget.Path(externalUrl)
+            val externalUri: Uri = mockk()
+            mockkStatic(Uri::class) {
+                every { Uri.parse(externalUrl) } returns externalUri
+                val externalTargetUrlFlow = MutableSharedFlow<UrlLoadResult>()
+                every { urlManager.serverUrlFlow(serverId, externalTarget) } returns externalTargetUrlFlow
+                every { urlManager.serverUrlFlow(serverId, FrontendTarget.Default) } returns flowOf(
+                    UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
+                )
+
+                val viewModel = createViewModel(path = externalUrl)
+                viewModel.events.test {
+                    externalTargetUrlFlow.emit(UrlLoadResult.ExternalUrl(url = externalUrl, serverId = serverId))
+                    advanceTimeBy(1.seconds)
+                    assertEquals(FrontendEvent.OpenExternalLink(externalUri), awaitItem())
+                    val state = assertInstanceOf(FrontendViewState.Loading::class.java, viewModel.viewState.value)
+                    // A restart of the load (e.g. on resume) uses this target, it must not reopen the external URL
+                    assertEquals(FrontendTarget.Default, state.target)
+                }
+            }
         }
     }
 
@@ -651,6 +686,79 @@ class FrontendViewModelTest {
         }
 
         @Test
+        fun `Given loading when the screen is backgrounded and resumed then the load is restarted`() = runTest {
+            every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
+                UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
+            )
+
+            val viewModel = createViewModel()
+            advanceTimeBy(1.seconds)
+            assertInstanceOf(FrontendViewState.Loading::class.java, viewModel.viewState.value)
+
+            // Backgrounded mid-load. The watchdog is cancelled, so the state simply stays Loading
+            // however long the app stays away.
+            viewModel.onScreenStartedChanged(false)
+            advanceTimeBy(5.minutes)
+            assertInstanceOf(FrontendViewState.Loading::class.java, viewModel.viewState.value)
+
+            viewModel.onScreenStartedChanged(true)
+            advanceTimeBy(CONNECTION_TIMEOUT + 1.seconds)
+
+            // Resuming restarts the timeout countdown, so it must also restart the load. The paused
+            // WebView never resumes a navigation on its own, and the already-loaded frontend never
+            // repeats its external-bus handshake, so without a reload the countdown can only expire.
+            verify(exactly = 2) { urlManager.serverUrlFlow(any(), any()) }
+        }
+
+        @Test
+        fun `Given loading a deep link when the screen is backgrounded and resumed then the load is restarted at the same target`() = runTest {
+            val target = FrontendTarget.Path("/dashboard")
+            every { urlManager.serverUrlFlow(serverId, target) } returns flowOf(
+                UrlLoadResult.Success(url = "https://example.com/dashboard?external_auth=1", serverId = serverId),
+            )
+
+            val viewModel = createViewModel(path = "/dashboard")
+            advanceTimeBy(1.seconds)
+            assertInstanceOf(FrontendViewState.Loading::class.java, viewModel.viewState.value)
+
+            viewModel.onScreenStartedChanged(false)
+            viewModel.onScreenStartedChanged(true)
+            advanceTimeBy(1.seconds)
+
+            verify(exactly = 2) { urlManager.serverUrlFlow(serverId, target) }
+        }
+
+        @Test
+        fun `Given loading with the handshake done when the screen is backgrounded and resumed then the load is not restarted`() = runTest {
+            val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
+            every { frontendBusObserver.messageResults() } returns messageFlow
+            every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
+                UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
+            )
+            coEvery { serverManager.getServer(serverId) } returns mockServer(
+                url = "https://ha.test",
+                name = "t",
+                haVersion = HomeAssistantVersion(2026, 8, 0),
+                serverId = serverId,
+            )
+
+            val viewModel = createViewModel()
+            advanceTimeBy(1.seconds)
+            messageFlow.emit(FrontendHandlerEvent.Connected)
+            advanceTimeBy(1.seconds)
+            val state = assertInstanceOf(FrontendViewState.Loading::class.java, viewModel.viewState.value)
+            assertTrue(state.connected)
+
+            // The frontend reconnects on its own once the handshake is done, so restarting would
+            // only discard a finished load.
+            viewModel.onScreenStartedChanged(false)
+            viewModel.onScreenStartedChanged(true)
+            advanceTimeBy(1.seconds)
+
+            verify(exactly = 1) { urlManager.serverUrlFlow(any(), any()) }
+        }
+
+        @Test
         fun `Given a server reporting the loaded event when Loaded never arrives then the content is shown after the timeout`() = runTest {
             val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
             every { frontendBusObserver.messageResults() } returns messageFlow
@@ -793,7 +901,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given show assist message result when collected then NavigateToAssist event is emitted`() = runTest {
+        fun `Given show assist message result when collected then NavigateToAssist event is sent`() = runTest {
             val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
             every { frontendBusObserver.messageResults() } returns messageFlow
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
@@ -821,7 +929,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given open settings message result when collected then NavigateToSettings event is emitted`() = runTest {
+        fun `Given open settings message result when collected then NavigateToSettings event is sent`() = runTest {
             val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
             every { frontendBusObserver.messageResults() } returns messageFlow
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
@@ -930,7 +1038,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given open assist settings message result when collected then NavigateToAssistSettings event is emitted`() = runTest {
+        fun `Given open assist settings message result when collected then NavigateToAssistSettings event is sent`() = runTest {
             val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
             every { frontendBusObserver.messageResults() } returns messageFlow
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
@@ -953,7 +1061,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given WriteNfcTag handler event when collected then NavigateToNfcWrite is emitted`() = runTest {
+        fun `Given WriteNfcTag handler event when collected then NavigateToNfcWrite is sent`() = runTest {
             val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
             every { frontendBusObserver.messageResults() } returns messageFlow
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
@@ -1001,7 +1109,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given EntityAddToExecuted with null event when collected then no event is emitted`() = runTest {
+        fun `Given EntityAddToExecuted with null event when collected then no event is sent`() = runTest {
             val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
             every { frontendBusObserver.messageResults() } returns messageFlow
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
@@ -1022,7 +1130,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given EntityAddToActionsSent when collected then no event is emitted`() = runTest {
+        fun `Given EntityAddToActionsSent when collected then no event is sent`() = runTest {
             val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
             every { frontendBusObserver.messageResults() } returns messageFlow
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
@@ -1480,7 +1588,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given auth dialog shown when cancel then snackbar event emitted`() = runTest {
+        fun `Given auth dialog shown when cancel then snackbar event sent`() = runTest {
             val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
             every { frontendBusObserver.messageResults() } returns messageFlow
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
@@ -1844,6 +1952,54 @@ class FrontendViewModelTest {
         }
 
         @Test
+        fun `Given a server supporting top insets when connected then content handles top insets`() = runTest {
+            val messageFlow = connectedMessageFlow()
+            coEvery { serverManager.getServer(serverId) } returns mockServer(
+                url = "https://example.com",
+                name = "test",
+                haVersion = HomeAssistantVersion(year = 2026, month = 10, release = 0),
+                serverId = serverId,
+            )
+            val viewModel = createViewModel()
+
+            viewModel.webViewActions.test {
+                advanceTimeBy(CONNECTION_TIMEOUT - 1.seconds)
+                messageFlow.emit(FrontendHandlerEvent.Connected)
+                advanceUntilIdle()
+
+                completeConnect(this@runTest, themeColors = null)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            val state = assertInstanceOf(FrontendViewState.Content::class.java, viewModel.viewState.value)
+            assertTrue(state.serverHandleTopInsets)
+        }
+
+        @Test
+        fun `Given a server without top insets support when connected then content does not handle top insets`() = runTest {
+            val messageFlow = connectedMessageFlow()
+            coEvery { serverManager.getServer(serverId) } returns mockServer(
+                url = "https://example.com",
+                name = "test",
+                haVersion = HomeAssistantVersion(year = 2026, month = 9, release = 0),
+                serverId = serverId,
+            )
+            val viewModel = createViewModel()
+
+            viewModel.webViewActions.test {
+                advanceTimeBy(CONNECTION_TIMEOUT - 1.seconds)
+                messageFlow.emit(FrontendHandlerEvent.Connected)
+                advanceUntilIdle()
+
+                completeConnect(this@runTest, themeColors = null)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            val state = assertInstanceOf(FrontendViewState.Content::class.java, viewModel.viewState.value)
+            assertFalse(state.serverHandleTopInsets)
+        }
+
+        @Test
         fun `Given a server handling insets when safe area insets change then they are applied to the frontend`() = runTest {
             val messageFlow = connectedMessageFlow()
             coEvery { serverManager.getServer(serverId) } returns mockServer(
@@ -2003,7 +2159,13 @@ class FrontendViewModelTest {
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
 
-            val viewModel = createViewModel()
+            val viewModel = createViewModel(
+                fileChooserHandler = FrontendFileChooserHandler(
+                    cameraCaptureRepository = mockk(relaxed = true),
+                    permissionManager = permissionManager,
+                    backgroundDispatcher = StandardTestDispatcher(testScheduler),
+                ),
+            )
 
             val filePathCallback = mockk<ValueCallback<Array<Uri>>>(relaxed = true)
             val fileChooserParams = mockk<WebChromeClient.FileChooserParams>(relaxed = true)
@@ -2020,7 +2182,7 @@ class FrontendViewModelTest {
             assertTrue(handled)
             val pending = viewModel.pendingFileChooser.value
             assertNotNull(pending)
-            assertTrue(pending.fileChooserParams === fileChooserParams)
+            assertTrue(pending.input.params === fileChooserParams)
         }
 
         @Test
@@ -2029,7 +2191,13 @@ class FrontendViewModelTest {
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
 
-            val viewModel = createViewModel()
+            val viewModel = createViewModel(
+                fileChooserHandler = FrontendFileChooserHandler(
+                    cameraCaptureRepository = mockk(relaxed = true),
+                    permissionManager = permissionManager,
+                    backgroundDispatcher = StandardTestDispatcher(testScheduler),
+                ),
+            )
             val filePathCallback = mockk<ValueCallback<Array<Uri>>>(relaxed = true)
 
             val client = viewModel.createWebChromeClient(onShowCustomView = {}, onHideCustomView = {})
@@ -2045,7 +2213,7 @@ class FrontendViewModelTest {
             assertNotNull(pending)
 
             val uris = arrayOf(mockk<Uri>())
-            pending.onResult(uris)
+            pending.onResult(FileChooserResult.Selected(uris.toList()))
             advanceUntilIdle()
 
             verify { filePathCallback.onReceiveValue(uris) }
@@ -2058,7 +2226,13 @@ class FrontendViewModelTest {
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
 
-            val viewModel = createViewModel()
+            val viewModel = createViewModel(
+                fileChooserHandler = FrontendFileChooserHandler(
+                    cameraCaptureRepository = mockk(relaxed = true),
+                    permissionManager = permissionManager,
+                    backgroundDispatcher = StandardTestDispatcher(testScheduler),
+                ),
+            )
             val filePathCallback = mockk<ValueCallback<Array<Uri>>>(relaxed = true)
 
             val client = viewModel.createWebChromeClient(onShowCustomView = {}, onHideCustomView = {})
@@ -2071,7 +2245,7 @@ class FrontendViewModelTest {
             advanceUntilIdle()
             val request = viewModel.pendingFileChooser.value
             assertNotNull(request)
-            request.onResult(null)
+            request.onResult(FileChooserResult.Cancelled)
             advanceUntilIdle()
 
             verify { filePathCallback.onReceiveValue(null) }
@@ -2211,7 +2385,7 @@ class FrontendViewModelTest {
     inner class DownloadHandling {
 
         @Test
-        fun `Given download error result when download requested then emits ShowSnackbar UI event`() = runTest {
+        fun `Given download error result when download requested then sends ShowSnackbar UI event`() = runTest {
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
@@ -2237,7 +2411,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given open with system result when download requested then emits OpenExternalLink event`() = runTest {
+        fun `Given open with system result when download requested then sends OpenExternalLink event`() = runTest {
             val testUri = mockk<Uri> {
                 every { this@mockk.toString() } returns "ftp://example.com/file.txt"
             }
@@ -2266,7 +2440,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given forwarded result when download requested then no UI event emitted`() = runTest {
+        fun `Given forwarded result when download requested then no UI event sent`() = runTest {
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
@@ -2372,7 +2546,7 @@ class FrontendViewModelTest {
     inner class ExoPlayer {
 
         @Test
-        fun `Given fullscreen true when onExoPlayerFullscreenChanged then manager is notified and RequestFullscreen true emitted`() = runTest {
+        fun `Given fullscreen true when onExoPlayerFullscreenChanged then manager is notified and RequestFullscreen true sent`() = runTest {
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
@@ -2387,7 +2561,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given fullscreen false when onExoPlayerFullscreenChanged then manager is notified and RequestFullscreen false emitted`() = runTest {
+        fun `Given fullscreen false when onExoPlayerFullscreenChanged then manager is notified and RequestFullscreen false sent`() = runTest {
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
@@ -2418,7 +2592,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given player is in fullscreen when player state becomes null then RequestFullscreen false is emitted`() = runTest {
+        fun `Given player is in fullscreen when player state becomes null then RequestFullscreen false is sent`() = runTest {
             val playerState = MutableStateFlow<ExoPlayerUiState?>(null)
             every { exoPlayerManager.state } returns playerState
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
@@ -2439,7 +2613,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given player never entered fullscreen when player state becomes null then no RequestFullscreen is emitted`() = runTest {
+        fun `Given player never entered fullscreen when player state becomes null then no RequestFullscreen is sent`() = runTest {
             val playerState = MutableStateFlow<ExoPlayerUiState?>(null)
             every { exoPlayerManager.state } returns playerState
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
@@ -2543,7 +2717,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given factory client when onShowCustomView then RequestFullscreen true emitted`() = runTest {
+        fun `Given factory client when onShowCustomView then RequestFullscreen true sent`() = runTest {
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
@@ -2558,7 +2732,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given factory client when onHideCustomView then RequestFullscreen false emitted`() = runTest {
+        fun `Given factory client when onHideCustomView then RequestFullscreen false sent`() = runTest {
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
@@ -2718,7 +2892,8 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given handler emits ReloadAtPath event when collected then state transitions to LoadServer`() = runTest {
+        fun `Given handler emits ReloadAtPath event when collected then the frontend is reloaded at that path`() = runTest {
+            val path = "/_my_redirect/config_flow_start?domain=acme"
             every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
                 UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
             )
@@ -2727,18 +2902,14 @@ class FrontendViewModelTest {
             advanceTimeBy(CONNECTION_TIMEOUT - 1.seconds)
 
             improvEventsFlow.emit(
-                FrontendImprovHandler.Event.ReloadAtPath(
-                    path = "/_my_redirect/config_flow_start?domain=acme",
-                    serverId = serverId,
-                ),
+                FrontendImprovHandler.Event.ReloadAtPath(path = path, serverId = serverId),
             )
             advanceTimeBy(1.seconds)
 
-            val state = assertInstanceOf(FrontendViewState.LoadServer::class.java, viewModel.viewState.value)
-            assertEquals(
-                FrontendTarget.Path("/_my_redirect/config_flow_start?domain=acme"),
-                state.target,
-            )
+            // Transitioning to LoadServer is not enough: nothing else starts a load, so without
+            // this the WebView would sit on the blank URL forever.
+            verify { urlManager.serverUrlFlow(serverId, FrontendTarget.Path(path)) }
+            assertInstanceOf(FrontendViewState.Loading::class.java, viewModel.viewState.value)
         }
 
         @Test
@@ -3004,6 +3175,38 @@ class FrontendViewModelTest {
     }
 
     @Nested
+    inner class WebViewDebugSetting {
+
+        @ParameterizedTest
+        @ValueSource(booleans = [true, false])
+        fun `Given the developer setting when created then webViewDebugEnabled follows it`(
+            enabled: Boolean,
+        ) = runTest {
+            every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
+                UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
+            )
+            coEvery { prefsRepository.webViewDebugFlow() } returns flowOf(enabled)
+
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            assertEquals(enabled, viewModel.webViewDebugEnabled.value)
+        }
+
+        @Test
+        fun `Given the setting not read yet when created then webViewDebugEnabled is null`() = runTest {
+            every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
+                UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
+            )
+            coEvery { prefsRepository.webViewDebugFlow() } returns MutableSharedFlow()
+
+            val viewModel = createViewModel()
+
+            assertNull(viewModel.webViewDebugEnabled.value)
+        }
+    }
+
+    @Nested
     inner class MatterThreadRouting {
 
         @Test
@@ -3021,6 +3224,24 @@ class FrontendViewModelTest {
             advanceUntilIdle()
 
             coVerify { matterThreadHandler.onStartMatterCommissioning() }
+        }
+
+        @Test
+        fun `Given StartMatterSharing handler event when collected then handler is called with its message`() = runTest {
+            val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
+            every { frontendBusObserver.messageResults() } returns messageFlow
+            every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
+                UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId),
+            )
+            val payload = MatterShareDevicePayload(passcode = 20202021, discriminator = 3840, remainingSeconds = 250)
+
+            createViewModel()
+            advanceUntilIdle()
+
+            messageFlow.emit(FrontendHandlerEvent.StartMatterSharing(messageId = 7, payload = payload))
+            advanceUntilIdle()
+
+            coVerify { matterThreadHandler.onStartMatterSharing(messageId = 7, payload = payload) }
         }
 
         @Test
@@ -3056,7 +3277,7 @@ class FrontendViewModelTest {
     inner class ErrorActions {
 
         @Test
-        fun `Given RemoveServerAndRelaunch when onErrorAction then removes server and emits Relaunch`() = runTest {
+        fun `Given RemoveServerAndRelaunch when onErrorAction then removes server and sends Relaunch`() = runTest {
             val viewModel = createViewModel()
             advanceUntilIdle()
 
@@ -3069,7 +3290,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given ClearKeychainAndRelaunch when onErrorAction then clears keychain and emits Relaunch`() = runTest {
+        fun `Given ClearKeychainAndRelaunch when onErrorAction then clears keychain and sends Relaunch`() = runTest {
             val viewModel = createViewModel()
             advanceUntilIdle()
 
@@ -3082,7 +3303,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given GoToSettings when onErrorAction then emits NavigateToSettings`() = runTest {
+        fun `Given GoToSettings when onErrorAction then sends NavigateToSettings`() = runTest {
             val viewModel = createViewModel()
             advanceUntilIdle()
 
@@ -3094,7 +3315,26 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given OpenSecuritySettings when onErrorAction then emits OpenSecuritySettings`() = runTest {
+        fun `Given events sent before the screen collects when collecting then each is delivered once in order`() = runTest {
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            viewModel.onErrorAction(ErrorActionIntent.GoToSettings)
+            viewModel.onErrorAction(ErrorActionIntent.OpenSecuritySettings)
+
+            viewModel.events.test {
+                assertEquals(FrontendEvent.NavigateToSettings, awaitItem())
+                assertEquals(FrontendEvent.OpenSecuritySettings, awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+            viewModel.events.test {
+                expectNoEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+        @Test
+        fun `Given OpenSecuritySettings when onErrorAction then sends OpenSecuritySettings`() = runTest {
             val viewModel = createViewModel()
             advanceUntilIdle()
 
@@ -3106,7 +3346,7 @@ class FrontendViewModelTest {
         }
 
         @Test
-        fun `Given UpdateWebView when onErrorAction then emits UpdateWebView`() = runTest {
+        fun `Given UpdateWebView when onErrorAction then sends UpdateWebView`() = runTest {
             val viewModel = createViewModel()
             advanceUntilIdle()
 
@@ -3176,6 +3416,169 @@ class FrontendViewModelTest {
                 expectNoEvents()
                 cancelAndIgnoreRemainingEvents()
             }
+        }
+    }
+
+    @Nested
+    @OptIn(EvaluateJavascriptUsage::class)
+    inner class TlsClientCertPriming {
+        private fun stubClientCert(certificate: ClientCertificate?) {
+            coEvery { keyChainRepository.getClientCertProvider() } returns object : ClientCertProvider {
+                override val certificate = certificate
+            }
+        }
+
+        @Test
+        fun `Given a client certificate when preparing a url load then a priming action is emitted and awaited`() = runTest {
+            stubClientCert(mockk())
+            val viewModel = createViewModel()
+
+            viewModel.webViewActions.test {
+                val prepare = launch { viewModel.prepareUrlLoad("https://example.com/?external_auth=1") }
+                val action = assertInstanceOf(WebViewAction.PingUrl::class.java, awaitItem())
+                assertEquals("https://example.com/manifest.json", action.url)
+                runCurrent()
+                assertFalse(prepare.isCompleted, "prepareUrlLoad should wait for the priming action")
+
+                action.result.complete(Unit)
+                prepare.join()
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+        @Test
+        fun `Given the action collector subscribes late when preparing a url load then the priming action is not dropped`() = runTest {
+            stubClientCert(mockk())
+            val viewModel = createViewModel()
+
+            // Start preparing before anything collects the actions, like a cold start where the
+            // Screen's collector is not subscribed yet.
+            val prepare = launch { viewModel.prepareUrlLoad("https://example.com/") }
+            runCurrent()
+            assertFalse(prepare.isCompleted, "prepareUrlLoad should wait for a subscriber")
+
+            viewModel.webViewActions.test {
+                val action = assertInstanceOf(WebViewAction.PingUrl::class.java, awaitItem())
+                action.result.complete(Unit)
+                prepare.join()
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+        @Test
+        fun `Given no client certificate when preparing a url load then no priming action is emitted`() = runTest {
+            stubClientCert(null)
+            val viewModel = createViewModel()
+
+            viewModel.webViewActions.test {
+                viewModel.prepareUrlLoad("https://example.com/")
+                expectNoEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+        @Test
+        fun `Given a blank url when preparing a url load then no priming action is emitted`() = runTest {
+            stubClientCert(mockk())
+            val viewModel = createViewModel()
+
+            viewModel.webViewActions.test {
+                viewModel.prepareUrlLoad("about:blank")
+                expectNoEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+        @Test
+        fun `Given a priming action that never completes when preparing a url load then it times out and cancels the action`() = runTest {
+            stubClientCert(mockk())
+            val viewModel = createViewModel()
+
+            viewModel.webViewActions.test {
+                val prepare = launch { viewModel.prepareUrlLoad("https://example.com/") }
+                val action = assertInstanceOf(WebViewAction.PingUrl::class.java, awaitItem())
+
+                advanceTimeBy(WebViewAction.PingUrl.PING_TIMEOUT + 1.seconds)
+                prepare.join()
+                assertTrue(action.result.isCancelled, "the action's polling should be stopped")
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+    }
+
+    @Nested
+    inner class OpenInBrowser {
+        @Test
+        fun `Given OpenInBrowser gesture when webview has URL then reads current URL and sends OpenExternalLink event`() = runTest {
+            coEvery {
+                gestureManager.handleGesture(serverId = any(), direction = any(), pointerCount = any())
+            } returns GestureResult.OpenInBrowser
+            val mockUri = mockk<Uri>()
+
+            val viewModel = createViewModel()
+            val webViewActions = mutableListOf<WebViewAction>()
+            val webViewJob = backgroundScope.launch {
+                viewModel.webViewActions.collect {
+                    webViewActions.add(it)
+                    if (it is WebViewAction.ReadCurrentUriForExternal) it.result.complete(mockUri)
+                }
+            }
+            val viewModelEvents = mutableListOf<FrontendEvent>()
+            val viewModelJob = backgroundScope.launch {
+                viewModel.events.collect {
+                    viewModelEvents.add(it)
+                }
+            }
+            advanceTimeBy(CONNECTION_TIMEOUT - 1.seconds)
+
+            viewModel.onGesture(GestureDirection.UP, pointerCount = 2)
+            advanceTimeBy(CONNECTION_TIMEOUT - 1.seconds)
+
+            assertEquals(1, webViewActions.size)
+            assertInstanceOf(WebViewAction.ReadCurrentUriForExternal::class.java, webViewActions[0])
+            advanceUntilIdle()
+
+            assertEquals(1, viewModelEvents.size)
+            val event = assertInstanceOf(FrontendEvent.OpenExternalLink::class.java, viewModelEvents[0])
+            assertEquals(mockUri, event.uri)
+
+            webViewJob.cancel()
+            viewModelJob.cancel()
+        }
+
+        @Test
+        fun `Given OpenInBrowser gesture when webview has no URL then reads current URL and returns early`() = runTest {
+            coEvery {
+                gestureManager.handleGesture(serverId = any(), direction = any(), pointerCount = any())
+            } returns GestureResult.OpenInBrowser
+
+            val viewModel = createViewModel()
+            val webViewActions = mutableListOf<WebViewAction>()
+            val webViewJob = backgroundScope.launch {
+                viewModel.webViewActions.collect {
+                    webViewActions.add(it)
+                    if (it is WebViewAction.ReadCurrentUriForExternal) it.result.complete(null)
+                }
+            }
+            val viewModelEvents = mutableListOf<FrontendEvent>()
+            val viewModelJob = backgroundScope.launch {
+                viewModel.events.collect {
+                    viewModelEvents.add(it)
+                }
+            }
+            advanceTimeBy(CONNECTION_TIMEOUT - 1.seconds)
+
+            viewModel.onGesture(GestureDirection.UP, pointerCount = 2)
+            advanceTimeBy(CONNECTION_TIMEOUT - 1.seconds)
+
+            assertEquals(1, webViewActions.size)
+            assertInstanceOf(WebViewAction.ReadCurrentUriForExternal::class.java, webViewActions[0])
+            advanceUntilIdle()
+
+            assertEquals(0, viewModelEvents.size)
+
+            webViewJob.cancel()
+            viewModelJob.cancel()
         }
     }
 }

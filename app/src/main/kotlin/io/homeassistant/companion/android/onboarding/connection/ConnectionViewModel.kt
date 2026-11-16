@@ -11,22 +11,30 @@ import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.authentication.impl.AuthenticationService
 import io.homeassistant.companion.android.common.data.connectivity.ConnectivityCheckRepository
 import io.homeassistant.companion.android.common.data.connectivity.ConnectivityCheckState
+import io.homeassistant.companion.android.common.data.prefs.PrefsRepository
 import io.homeassistant.companion.android.common.util.SuspendLazy
 import io.homeassistant.companion.android.frontend.error.FrontendConnectionError
 import io.homeassistant.companion.android.frontend.error.FrontendConnectionErrorStateProvider
-import io.homeassistant.companion.android.frontend.filechooser.FileChooserManager
 import io.homeassistant.companion.android.frontend.filechooser.FileChooserRequest
+import io.homeassistant.companion.android.frontend.filechooser.FrontendFileChooserHandler
+import io.homeassistant.companion.android.frontend.permissions.PermissionManager
+import io.homeassistant.companion.android.frontend.permissions.PermissionRequest
 import io.homeassistant.companion.android.onboarding.connection.navigation.ConnectionRoute
 import io.homeassistant.companion.android.util.HAWebChromeClient
 import io.homeassistant.companion.android.util.HAWebViewClient
 import io.homeassistant.companion.android.util.HAWebViewClientFactory
+import io.homeassistant.companion.android.util.sensitive
 import javax.inject.Inject
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl
@@ -71,12 +79,15 @@ internal sealed interface ConnectionNavigationEvent {
     data class OpenBrowserAuth(val url: String) : ConnectionNavigationEvent
 }
 
+@Suppress("LongParameterList")
 @HiltViewModel
 internal class ConnectionViewModel @VisibleForTesting constructor(
     private val rawUrl: String,
     webViewClientFactory: HAWebViewClientFactory,
     private val connectivityCheckRepository: ConnectivityCheckRepository,
-    private val fileChooserManager: FileChooserManager,
+    fileChooserHandler: FrontendFileChooserHandler,
+    permissionManager: PermissionManager,
+    prefsRepository: PrefsRepository,
     browserAuthManager: BrowserAuthManager,
 ) : ViewModel(),
     FrontendConnectionErrorStateProvider {
@@ -86,15 +97,24 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
         savedStateHandle: SavedStateHandle,
         webViewClientFactory: HAWebViewClientFactory,
         connectivityCheckRepository: ConnectivityCheckRepository,
-        fileChooserManager: FileChooserManager,
+        fileChooserHandler: FrontendFileChooserHandler,
+        permissionManager: PermissionManager,
+        prefsRepository: PrefsRepository,
         browserAuthManager: BrowserAuthManager,
     ) : this(
         savedStateHandle.toRoute<ConnectionRoute>().url,
         webViewClientFactory,
         connectivityCheckRepository,
-        fileChooserManager,
+        fileChooserHandler,
+        permissionManager,
+        prefsRepository,
         browserAuthManager,
     )
+
+    /** Whether the WebView is debuggable per the developer setting, null until the pref is read. */
+    val webViewDebugEnabled: StateFlow<Boolean?> = flow {
+        emitAll(prefsRepository.webViewDebugFlow())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = null)
 
     /**
      * The origin (scheme/host/port) of the URL used to open this screen.
@@ -115,8 +135,8 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
      */
     private val effectiveUrl = MutableStateFlow(rawHttpUrl?.toBaseUrl() ?: rawUrl)
 
-    private val _navigationEventsFlow = MutableSharedFlow<ConnectionNavigationEvent>(replay = 1)
-    val navigationEventsFlow = _navigationEventsFlow.asSharedFlow()
+    private val _navigationEventsFlow = Channel<ConnectionNavigationEvent>(Channel.BUFFERED)
+    val navigationEventsFlow = _navigationEventsFlow.receiveAsFlow()
 
     private val _urlFlow = MutableStateFlow<String?>(null)
     override val urlFlow = _urlFlow.asStateFlow()
@@ -170,14 +190,17 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
     val webChromeClient: HAWebChromeClient = HAWebChromeClient(
         onShowFileChooser = { filePathCallback, fileChooserParams ->
             viewModelScope.launch {
-                filePathCallback.onReceiveValue(fileChooserManager.pickFiles(fileChooserParams))
+                filePathCallback.onReceiveValue(fileChooserHandler.pickFiles(fileChooserParams))
             }
             true
         },
     )
 
     /** The current pending file chooser request from the WebView, or `null` if none. */
-    val pendingFileChooser: StateFlow<FileChooserRequest?> = fileChooserManager.pendingFileChooser
+    val pendingFileChooser: StateFlow<FileChooserRequest?> = fileChooserHandler.pendingFileChooser
+
+    /** The current pending permission request, or `null` if none. */
+    val pendingPermissionRequest: StateFlow<PermissionRequest?> = permissionManager.pendingPermissionRequest
 
     init {
         viewModelScope.launch {
@@ -209,12 +232,12 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
     fun onSignInWithBrowserClick() {
         val authUrl = urlFlow.value ?: return
         viewModelScope.launch {
-            _navigationEventsFlow.emit(ConnectionNavigationEvent.OpenBrowserAuth(authUrl))
+            _navigationEventsFlow.send(ConnectionNavigationEvent.OpenBrowserAuth(authUrl))
         }
     }
 
     private suspend fun buildAuthUrl(base: String) {
-        Timber.d("Building auth url based on $base")
+        Timber.d("Building auth url based on ${sensitive(base)}")
         try {
             val authUrl = with(base.toHttpUrl()) {
                 HttpUrl.Builder()
@@ -228,12 +251,12 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
                     .build()
                     .toString()
             }
-            Timber.d("Auth url is: $authUrl")
+            Timber.d("Auth url is: ${sensitive(authUrl)}")
             _urlFlow.emit(authUrl)
             // Directly hand the sign-in to the external browser so an existing browser session
             // (e.g. of an SSO provider) can be reused. The WebView below keeps loading the same
             // page as a fallback for when the user returns without having signed in.
-            _navigationEventsFlow.emit(ConnectionNavigationEvent.OpenBrowserAuth(authUrl))
+            _navigationEventsFlow.send(ConnectionNavigationEvent.OpenBrowserAuth(authUrl))
         } catch (e: Exception) {
             Timber.e(e, "Unable to build authentication URL")
             onError(
@@ -286,9 +309,9 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
                 false // Not intercepted: Auth code missing
             }
         } else if (url.host != rawHttpUrl?.host) {
-            Timber.d("$url is not from the server, opening it in an external browser")
+            Timber.d("${sensitive(url.toString())} URL is not from the server, opening it in an external browser")
             viewModelScope.launch {
-                _navigationEventsFlow.emit(ConnectionNavigationEvent.OpenExternalLink(url))
+                _navigationEventsFlow.send(ConnectionNavigationEvent.OpenExternalLink(url))
             }
             true // Intercepted: External link
         } else {
@@ -299,7 +322,7 @@ internal class ConnectionViewModel @VisibleForTesting constructor(
     /** Emits [ConnectionNavigationEvent.Authenticated] for the current [effectiveUrl]. */
     private fun emitAuthenticated(authCode: String, requiredMTLS: Boolean) {
         viewModelScope.launch {
-            _navigationEventsFlow.emit(
+            _navigationEventsFlow.send(
                 ConnectionNavigationEvent.Authenticated(
                     url = effectiveUrl.value,
                     authCode = authCode,

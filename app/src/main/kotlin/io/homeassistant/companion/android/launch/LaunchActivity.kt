@@ -47,6 +47,7 @@ import io.homeassistant.companion.android.common.util.CheckLocalNetworkPermissio
 import io.homeassistant.companion.android.common.util.SdkVersion
 import io.homeassistant.companion.android.frontend.navigation.FrontendTarget
 import io.homeassistant.companion.android.launch.applock.HazeLockOverlay
+import io.homeassistant.companion.android.mediacontrols.HaMediaSessionService
 import io.homeassistant.companion.android.sensors.SensorReceiver
 import io.homeassistant.companion.android.util.CheckLocationDisabledUseCase
 import io.homeassistant.companion.android.util.PLAY_SERVICES_FLAVOR_DOC_URL
@@ -54,6 +55,7 @@ import io.homeassistant.companion.android.util.PlayServicesAvailability
 import io.homeassistant.companion.android.util.compose.HAApp
 import io.homeassistant.companion.android.util.compose.navigateToUri
 import io.homeassistant.companion.android.util.enableEdgeToEdgeCompat
+import io.homeassistant.companion.android.util.setRecentsScreenshotProtection
 import io.homeassistant.companion.android.websocket.WebsocketManager
 import javax.inject.Inject
 import kotlinx.coroutines.launch
@@ -193,13 +195,17 @@ class LaunchActivity : AppCompatActivity() {
 
         enableEdgeToEdgeCompat()
 
+        lifecycleScope.launch {
+            viewModel.isAppLockEnabled.collect(::setRecentsScreenshotProtection)
+        }
+
         setContent {
             HATheme {
                 val navController = rememberNavController()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val isFullScreen by viewModel.isFullScreen.collectAsStateWithLifecycle()
                 val isAppLocked by viewModel.isAppLocked.collectAsStateWithLifecycle()
-                val hazeState = rememberHazeState(blurEnabled = isAppLocked)
+                val hazeState = rememberHazeState()
                 val snackbarHostState = remember { SnackbarHostState() }
 
                 FullscreenEffect(isFullScreen = isFullScreen)
@@ -222,7 +228,9 @@ class LaunchActivity : AppCompatActivity() {
                 )
 
                 // We don't apply the overlay on top of the dialogs
-                HazeLockOverlay(hazeState)
+                if (isAppLocked) {
+                    HazeLockOverlay(hazeState)
+                }
 
                 when (uiState) {
                     LaunchUiState.NetworkUnavailable -> NetworkUnavailableDialog(onBackClick = ::finish)
@@ -248,6 +256,7 @@ class LaunchActivity : AppCompatActivity() {
         SensorWorker.start(this)
         lifecycleScope.launch {
             WebsocketManager.start(this@LaunchActivity)
+            HaMediaSessionService.start(this@LaunchActivity)
             checkLocationDisabled()
             checkLocalNetworkPermission()
         }

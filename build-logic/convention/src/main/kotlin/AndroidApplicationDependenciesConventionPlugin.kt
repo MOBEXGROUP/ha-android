@@ -27,10 +27,11 @@ class AndroidApplicationDependenciesConventionPlugin : Plugin<Project> {
                 dependencies {
                     "implementation"(project(":common"))
                     "implementation"(project(":microwakeword"))
+                    "implementation"(project(":webrtc"))
 
                     "implementation"(libs.blurView)
                     "implementation"(libs.haze)
-                    "implementation"(libs.haze.materials)
+                    "implementation"(libs.haze.blur.materials)
                     "implementation"(libs.androidx.health.connect.client)
 
                     "implementation"(libs.kotlin.stdlib)
@@ -74,12 +75,10 @@ class AndroidApplicationDependenciesConventionPlugin : Plugin<Project> {
                     "minimalImplementation"(libs.media3.datasource.cronet) {
                         exclude(group = "com.google.android.gms", module = "play-services-cronet")
                     }
-                    "minimalImplementation"(libs.cronet.embedded)
+                    "minimalImplementation"(libs.cronet.bundled)
 
                     "implementation"(libs.compose.animation)
                     "implementation"(libs.compose.material)
-                    "implementation"(libs.compose.material.icons.core)
-                    "implementation"(libs.compose.material.icons.extended)
                     "implementation"(libs.compose.runtime)
                     "implementation"(libs.activity.compose)
                     "implementation"(libs.navigation.compose)
@@ -90,10 +89,6 @@ class AndroidApplicationDependenciesConventionPlugin : Plugin<Project> {
                     "implementation"(libs.androidx.hilt.navigation.compose)
 
                     "implementation"(libs.bundles.androidx.glance)
-
-                    "implementation"(libs.iconics.core)
-                    "implementation"(libs.iconics.compose)
-                    "implementation"(libs.community.material.typeface)
 
                     "implementation"(libs.bundles.paging)
 

@@ -16,7 +16,6 @@ import io.homeassistant.companion.android.onboarding.connection.navigation.navig
 import io.homeassistant.companion.android.onboarding.localfirst.navigation.LocalFirstRoute
 import io.homeassistant.companion.android.onboarding.localfirst.navigation.localFirstScreen
 import io.homeassistant.companion.android.onboarding.localfirst.navigation.navigateToLocalFirst
-import io.homeassistant.companion.android.onboarding.locationforsecureconnection.navigation.LocationForSecureConnectionRoute
 import io.homeassistant.companion.android.onboarding.locationforsecureconnection.navigation.URL_SECURITY_LEVEL_DOCUMENTATION
 import io.homeassistant.companion.android.onboarding.locationforsecureconnection.navigation.locationForSecureConnectionScreen
 import io.homeassistant.companion.android.onboarding.locationforsecureconnection.navigation.navigateToLocationForSecureConnection
@@ -231,12 +230,8 @@ internal fun NavGraphBuilder.onboarding(
                 if (allowInsecureConnection) {
                     onOnboardingDone()
                 } else {
-                    navController.navigateToSetHomeNetworkRoute(
-                        serverId = serverId,
-                        navOptions {
-                            popUpTo<LocationForSecureConnectionRoute> { inclusive = true }
-                        },
-                    )
+                    // Keep the security choice on the back stack so the user can go back and change it.
+                    navController.navigateToSetHomeNetworkRoute(serverId = serverId)
                 }
             },
             onShowSnackbar = onShowSnackbar,
@@ -244,6 +239,7 @@ internal fun NavGraphBuilder.onboarding(
         )
 
         setHomeNetworkScreen(
+            onBackClick = navController::popBackStack,
             onHelpClick = {
                 navController.navigateToUri(URL_SECURITY_LEVEL_DOCUMENTATION, onShowSnackbar)
             },

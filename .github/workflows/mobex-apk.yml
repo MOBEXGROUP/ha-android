@@ -11,8 +11,7 @@ on: # yamllint disable-line rule:truthy
       - browser-sso
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: mobex-apk
@@ -22,6 +21,8 @@ jobs:
   build:
     name: Build signed minimal release APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Create the GitHub release with the APK
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -93,8 +94,10 @@ jobs:
 
       - name: Prepare APK
         id: apk
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.code }}
         run: |
-          name="home-assistant-mobex-${{ steps.version.outputs.code }}.apk"
+          name="home-assistant-mobex-$VERSION_CODE.apk"
           cp app/build/outputs/apk/minimal/release/app-minimal-release.apk "$RUNNER_TEMP/$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "path=$RUNNER_TEMP/$name" >> "$GITHUB_OUTPUT"
@@ -109,16 +112,19 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_DATE: ${{ steps.version.outputs.date }}
+          APK_PATH: ${{ steps.apk.outputs.path }}
         run: |
-          gh release create "mobex-${{ steps.version.outputs.code }}" \
-            "${{ steps.apk.outputs.path }}" \
-            --title "MOBEX APK ${{ steps.version.outputs.date }}" \
+          gh release create "mobex-$VERSION_CODE" \
+            "$APK_PATH" \
+            --title "MOBEX APK $VERSION_DATE" \
             --notes "Interner Build der Home Assistant App mit Browser-Login.
 
           | | |
           |---|---|
           | Paket | \`de.mobex.homeassistant.minimal\` |
-          | Version code | \`${{ steps.version.outputs.code }}\` |
-          | Commit | ${{ github.sha }} |
+          | Version code | \`$VERSION_CODE\` |
+          | Commit | $GITHUB_SHA |
 
-          Upload nach Intune: siehe [docs/mobex-work-profile.md](https://github.com/${{ github.repository }}/blob/browser-sso/docs/mobex-work-profile.md)."
+          Upload nach Intune: siehe [docs/mobex-work-profile.md](https://github.com/$GITHUB_REPOSITORY/blob/browser-sso/docs/mobex-work-profile.md)."

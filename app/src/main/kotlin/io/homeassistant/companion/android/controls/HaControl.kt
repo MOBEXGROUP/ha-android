@@ -7,11 +7,11 @@ import android.content.Intent
 import android.os.Build
 import android.service.controls.Control
 import android.service.controls.actions.ControlAction
+import androidx.annotation.ColorRes
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
-import com.mikepenz.iconics.IconicsDrawable
-import com.mikepenz.iconics.utils.sizeDp
-import com.mikepenz.iconics.utils.toAndroidIconCompat
+import androidx.core.graphics.drawable.IconCompat
+import io.github.timoptr.mdiicons.toBitmap
 import io.homeassistant.companion.android.common.R
 import io.homeassistant.companion.android.common.data.integration.IntegrationDomains.CAMERA_DOMAIN
 import io.homeassistant.companion.android.common.data.integration.IntegrationDomains.CLIMATE_DOMAIN
@@ -22,11 +22,13 @@ import io.homeassistant.companion.android.common.util.SdkVersion
 import io.homeassistant.companion.android.frontend.navigation.FrontendTarget
 import io.homeassistant.companion.android.launch.intentLaunchWithNavigateTo
 
+private const val CONTROL_ICON_SIZE_DP = 48
+
 @RequiresApi(Build.VERSION_CODES.R)
 interface HaControl {
 
     @SuppressLint("ResourceType")
-    fun createControl(context: Context, item: EntityDisplayWithContext, info: HaControlInfo): Control {
+    suspend fun createControl(context: Context, item: EntityDisplayWithContext, info: HaControlInfo): Control {
         val controlIntent =
             context.applicationContext.intentLaunchWithNavigateTo(
                 FrontendTarget.EntityMoreInfo(info.entityId),
@@ -39,7 +41,7 @@ interface HaControl {
                 context,
                 info.entityId.hashCode(),
                 controlIntent,
-                PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE,
+                PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             ),
         )
         control.setTitle(item.name)
@@ -61,28 +63,14 @@ interface HaControl {
             control.setAuthRequired(info.authRequired)
         }
         // Render the resolved icon to match the HA frontend rather than the provided device type
-        val iconDrawable = IconicsDrawable(context, item.icon).apply { sizeDp = 48 }
-        val colorTint = when {
-            item.domain == LIGHT_DOMAIN && item.rawState == "on" -> R.color.colorDeviceControlsLightOn
-            item.domain == CAMERA_DOMAIN -> R.color.colorDeviceControlsCamera
-            item.domain == CLIMATE_DOMAIN && item.rawState == "heat"
-            -> R.color.colorDeviceControlsThermostatHeat
-
-            item.rawState in listOf(
-                "off",
-                "unavailable",
-                "unknown",
-            ) -> R.color.colorDeviceControlsOff
-
-            else -> R.color.colorDeviceControlsDefaultOn
-        }
-        iconDrawable.setTint(ContextCompat.getColor(context, colorTint))
-        control.setCustomIcon(iconDrawable.toAndroidIconCompat().toIcon(context))
+        val colorTint = ContextCompat.getColor(context, item.iconTint())
+        val iconBitmap = item.icon.toBitmap(context, CONTROL_ICON_SIZE_DP, colorTint)
+        control.setCustomIcon(IconCompat.createWithBitmap(iconBitmap).toIcon(context))
 
         return provideControlFeatures(context, control, item, info).build()
     }
 
-    fun provideControlFeatures(
+    suspend fun provideControlFeatures(
         context: Context,
         control: Control.StatefulBuilder,
         item: EntityDisplayWithContext,
@@ -98,4 +86,17 @@ interface HaControl {
         action: ControlAction,
         serverId: Int,
     ): Boolean
+}
+
+@ColorRes
+private fun EntityDisplayWithContext.iconTint(): Int = when {
+    domain == LIGHT_DOMAIN && rawState == "on" -> R.color.colorDeviceControlsLightOn
+
+    domain == CAMERA_DOMAIN -> R.color.colorDeviceControlsCamera
+
+    domain == CLIMATE_DOMAIN && rawState == "heat" -> R.color.colorDeviceControlsThermostatHeat
+
+    rawState in listOf("off", "unavailable", "unknown") -> R.color.colorDeviceControlsOff
+
+    else -> R.color.colorDeviceControlsDefaultOn
 }

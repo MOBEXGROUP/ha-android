@@ -23,6 +23,7 @@ class ConnectionScreenshotTest {
                 onBackClick = {},
                 onWebViewCreationFailed = {},
                 onSignInWithBrowserClick = {},
+                webViewDebugEnabled = null,
             )
         }
     }
@@ -41,6 +42,7 @@ class ConnectionScreenshotTest {
                 onBackClick = {},
                 onWebViewCreationFailed = {},
                 onSignInWithBrowserClick = {},
+                webViewDebugEnabled = null,
             )
         }
     }
@@ -59,6 +61,7 @@ class ConnectionScreenshotTest {
                 onBackClick = {},
                 onWebViewCreationFailed = {},
                 onSignInWithBrowserClick = {},
+                webViewDebugEnabled = null,
             )
         }
     }

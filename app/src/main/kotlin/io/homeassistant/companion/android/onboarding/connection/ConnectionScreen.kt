@@ -1,5 +1,6 @@
 package io.homeassistant.companion.android.onboarding.connection
 
+import android.annotation.SuppressLint
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -40,6 +41,8 @@ import io.homeassistant.companion.android.common.compose.theme.HAThemeForPreview
 import io.homeassistant.companion.android.common.compose.theme.LocalHAColorScheme
 import io.homeassistant.companion.android.frontend.filechooser.FileChooserEffect
 import io.homeassistant.companion.android.frontend.filechooser.FileChooserRequest
+import io.homeassistant.companion.android.frontend.permissions.PendingPermissionHandler
+import io.homeassistant.companion.android.frontend.permissions.PermissionRequest
 import io.homeassistant.companion.android.loading.LoadingScreen
 import io.homeassistant.companion.android.util.compose.HAPreviews
 import io.homeassistant.companion.android.util.compose.webview.HAWebView
@@ -59,6 +62,8 @@ internal fun ConnectionScreen(onBackClick: () -> Unit, viewModel: ConnectionView
     val isLoading by viewModel.isLoadingFlow.collectAsState()
     val error by viewModel.errorFlow.collectAsState()
     val pendingFileChooser by viewModel.pendingFileChooser.collectAsState()
+    val pendingPermissionRequest by viewModel.pendingPermissionRequest.collectAsState()
+    val webViewDebugEnabled by viewModel.webViewDebugEnabled.collectAsState()
     val isError = error != null
 
     ConnectionScreen(
@@ -68,9 +73,11 @@ internal fun ConnectionScreen(onBackClick: () -> Unit, viewModel: ConnectionView
         getWebViewClient = viewModel::getWebViewClient,
         webChromeClient = viewModel.webChromeClient,
         pendingFileChooser = pendingFileChooser,
+        pendingPermissionRequest = pendingPermissionRequest,
         onBackClick = onBackClick,
         onWebViewCreationFailed = viewModel::onWebViewCreationFailed,
         onSignInWithBrowserClick = viewModel::onSignInWithBrowserClick,
+        webViewDebugEnabled = webViewDebugEnabled,
         modifier = modifier,
     )
 }
@@ -85,10 +92,13 @@ internal fun ConnectionScreen(
     onBackClick: () -> Unit,
     onWebViewCreationFailed: (Throwable) -> Unit,
     onSignInWithBrowserClick: () -> Unit,
+    webViewDebugEnabled: Boolean?,
     modifier: Modifier = Modifier,
     pendingFileChooser: FileChooserRequest? = null,
+    pendingPermissionRequest: PermissionRequest? = null,
 ) {
     FileChooserEffect(pendingRequest = pendingFileChooser)
+    PendingPermissionHandler(pendingRequest = pendingPermissionRequest)
 
     Box(modifier = modifier.testTag(CONNECTION_SCREEN_TAG)) {
         Spacer(
@@ -117,6 +127,7 @@ internal fun ConnectionScreen(
                         },
                         onBackPressed = onBackClick,
                         onWebViewCreationFailed = onWebViewCreationFailed,
+                        debuggingEnabled = webViewDebugEnabled,
                     )
                     webView?.let { view ->
                         LaunchedEffect(view, url) {
@@ -168,6 +179,7 @@ private fun ErrorPlaceholder() {
     }
 }
 
+@SuppressLint("MissingOnRenderProcessGone")
 @HAPreviews
 @Composable
 private fun ConnectionScreenPreview() {
@@ -181,6 +193,7 @@ private fun ConnectionScreenPreview() {
             onBackClick = {},
             onWebViewCreationFailed = {},
             onSignInWithBrowserClick = {},
+            webViewDebugEnabled = null,
             modifier = Modifier.fillMaxSize(),
         )
     }
