@@ -264,6 +264,7 @@ class ConnectionViewModelTest {
 
         turbineScope {
             val navigationEventsFlow = viewModel.navigationEventsFlow.testIn(backgroundScope)
+            navigationEventsFlow.skipBrowserAuthOpened()
             assertTrue(navigationEventsFlow.awaitItem() is ConnectionNavigationEvent.Authenticated)
             navigationEventsFlow.cancelAndIgnoreRemainingEvents()
         }
