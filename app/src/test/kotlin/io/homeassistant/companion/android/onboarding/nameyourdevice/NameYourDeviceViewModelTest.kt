@@ -21,14 +21,20 @@ import io.homeassistant.companion.android.testing.unit.MainDispatcherJUnit5Exten
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.slot
+import io.mockk.unmockkAll
+import java.net.InetAddress
+import java.net.URL
 import javax.net.ssl.SSLException
 import javax.net.ssl.SSLHandshakeException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -92,6 +98,11 @@ class NameYourDeviceViewModelTest {
         )
     }
 
+    @AfterEach
+    fun tearDown() {
+        unmockkAll()
+    }
+
     @Test
     fun `Given viewModelInitialized when observingDeviceNameFlow then emits DefaultDeviceName`() = runTest {
         assertEquals(DEFAULT_DEVICE_NAME, viewModel.deviceNameFlow.value)
@@ -138,7 +149,7 @@ class NameYourDeviceViewModelTest {
     }
 
     @Test
-    fun `Given successful add server when onSaveClick then emits DeviceNameSaved event`() = runTest {
+    fun `Given successful add server when onSaveClick then sends DeviceNameSaved event`() = runTest {
         val testServerId = 1
         val tempServerSlot = slot<TemporaryServer>()
         coEvery {
@@ -181,7 +192,7 @@ class NameYourDeviceViewModelTest {
     }
 
     @Test
-    fun `Given custom deviceName and successful add server when onSaveClick then emits DeviceNameSaved event and registered with custom name and server activated`() = runTest {
+    fun `Given custom deviceName and successful add server when onSaveClick then sends DeviceNameSaved event and registered with custom name and server activated`() = runTest {
         val customDeviceName = "Pixel"
         viewModel.onDeviceNameChange(customDeviceName)
         advanceUntilIdle()
@@ -232,8 +243,18 @@ class NameYourDeviceViewModelTest {
     }
 
     @Test
-    fun `Given public secure url when onSaveClick then emits DeviceNameSaved with hasPlainTextAccess to false and isPubliclyAccessible true and enforces secure connection`() = runTest {
-        val secureRoute = NameYourDeviceRoute("https://www.home-assistant.io", "auth_code")
+    fun `Given public secure url when onSaveClick then sends DeviceNameSaved with hasPlainTextAccess to false and isPubliclyAccessible true and enforces secure connection`() = runTest {
+        val url = URL("https://www.home-assistant.io")
+        mockkStatic(InetAddress::class)
+        every { InetAddress.getAllByName(url.host) } returns arrayOf(
+            mockk<InetAddress>().apply {
+                every { isSiteLocalAddress } returns false
+                every { isLoopbackAddress } returns false
+                every { isLinkLocalAddress } returns false
+                every { isAnyLocalAddress } returns false
+            },
+        )
+        val secureRoute = NameYourDeviceRoute(url.toString(), "auth_code")
         viewModel = NameYourDeviceViewModel(
             secureRoute,
             serverManager,
@@ -284,7 +305,7 @@ class NameYourDeviceViewModelTest {
     }
 
     @Test
-    fun `Given serverRegistrationRepository registerAuthorizationCode returns null when onSaveClick then emits Error event and attempts no cleanup`() = runTest {
+    fun `Given serverRegistrationRepository registerAuthorizationCode returns null when onSaveClick then sends Error event and attempts no cleanup`() = runTest {
         coEvery {
             serverRegistrationRepository.registerAuthorizationCode(
                 url = route.url,
@@ -312,7 +333,30 @@ class NameYourDeviceViewModelTest {
     }
 
     @Test
-    fun `Given serverRegistrationRepository Throws when onSaveClick then emits Error event and attempts no cleanup`() = runTest {
+    fun `Given Error event sent before the screen collects when collecting then it is delivered once`() = runTest {
+        coEvery {
+            serverRegistrationRepository.registerAuthorizationCode(
+                url = route.url,
+                authorizationCode = route.authCode,
+                allowInsecureConnection = null,
+            )
+        } returns null
+
+        viewModel.onSaveClick()
+        advanceUntilIdle()
+
+        turbineScope {
+            val navEvents = viewModel.navigationEventsFlow.testIn(backgroundScope)
+            assertError(navEvents.awaitItem(), commonR.string.webview_error)
+            navEvents.cancelAndIgnoreRemainingEvents()
+        }
+        turbineScope {
+            viewModel.navigationEventsFlow.testIn(backgroundScope).expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `Given serverRegistrationRepository Throws when onSaveClick then sends Error event and attempts no cleanup`() = runTest {
         coEvery {
             serverRegistrationRepository.registerAuthorizationCode(
                 url = route.url,
@@ -341,7 +385,7 @@ class NameYourDeviceViewModelTest {
     }
 
     @Test
-    fun `Given integrationRepository registerDevice throws when onSaveClick then emits error event and attempts cleanup`() = runTest {
+    fun `Given integrationRepository registerDevice throws when onSaveClick then sends error event and attempts cleanup`() = runTest {
         val testServerId = 1
         coEvery {
             serverRegistrationRepository.registerAuthorizationCode(
@@ -376,7 +420,7 @@ class NameYourDeviceViewModelTest {
     }
 
     @Test
-    fun `Given registerAuthorizationCode throws HttpException 404 when onSaveClick then emits error with error_with_registration message`() = runTest {
+    fun `Given registerAuthorizationCode throws HttpException 404 when onSaveClick then sends error with error_with_registration message`() = runTest {
         coEvery {
             serverRegistrationRepository.registerAuthorizationCode(
                 url = route.url,
@@ -394,7 +438,7 @@ class NameYourDeviceViewModelTest {
     }
 
     @Test
-    fun `Given registerAuthorizationCode throws SSLHandshakeException when onSaveClick then emits error with webview_error_FAILED_SSL_HANDSHAKE message`() = runTest {
+    fun `Given registerAuthorizationCode throws SSLHandshakeException when onSaveClick then sends error with webview_error_FAILED_SSL_HANDSHAKE message`() = runTest {
         val exception = SSLHandshakeException("SSL handshake failed")
         coEvery {
             serverRegistrationRepository.registerAuthorizationCode(
@@ -413,7 +457,7 @@ class NameYourDeviceViewModelTest {
     }
 
     @Test
-    fun `Given registerAuthorizationCode throws SSLException when onSaveClick then emits error with webview_error_SSL_INVALID message`() = runTest {
+    fun `Given registerAuthorizationCode throws SSLException when onSaveClick then sends error with webview_error_SSL_INVALID message`() = runTest {
         coEvery {
             serverRegistrationRepository.registerAuthorizationCode(
                 url = route.url,
