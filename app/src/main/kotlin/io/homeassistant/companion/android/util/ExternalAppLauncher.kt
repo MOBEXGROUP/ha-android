@@ -3,6 +3,7 @@ package io.homeassistant.companion.android.util
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.net.Uri
+import android.util.AndroidRuntimeException
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.webkit.WebViewCompat
 import io.homeassistant.companion.android.BuildConfig
@@ -35,15 +36,26 @@ suspend fun Context.updateSystemWebView(onShowSnackbar: suspend (message: String
  *
  * Unlike a WebView, the Custom Tab shares its session state (e.g. cookies) with the browser,
  * letting the user reuse existing sessions such as a sign-in at an SSO provider. When no browser
- * is available to open the tab, [onShowSnackbar] surfaces the failure to the user.
+ * is available or allowed to open the tab, [onShowSnackbar] surfaces the failure to the user.
  */
 suspend fun Context.openCustomTab(uri: Uri, onShowSnackbar: suspend (message: String, action: String?) -> Boolean) {
-    try {
+    // The caught exceptions embed the intent including its data URI, so they are only logged in
+    // debug builds to avoid leaking the server URL in release logs. Mirrors the exceptions handled
+    // by the common startActivityCatching used for regular links.
+    val failure = try {
         CustomTabsIntent.Builder().build().launchUrl(this, uri)
+        null
     } catch (e: ActivityNotFoundException) {
-        // The exception embeds the intent including its data URI, so it is only logged in debug
-        // builds to avoid leaking the server URL in release logs.
-        Timber.e(e.takeIf { BuildConfig.DEBUG }, "No browser available to open a Custom Tab")
+        e
+    } catch (e: SecurityException) {
+        // The resolved browser requires a permission we were not granted to launch it.
+        e
+    } catch (e: AndroidRuntimeException) {
+        // e.g. launching without FLAG_ACTIVITY_NEW_TASK from a non-Activity context.
+        e
+    }
+    if (failure != null) {
+        Timber.e(failure.takeIf { BuildConfig.DEBUG }, "Unable to open a Custom Tab")
         onShowSnackbar(getString(commonR.string.fail_to_navigate_to_uri, uri.toString()), null)
     }
 }
