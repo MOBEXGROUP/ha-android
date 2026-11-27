@@ -521,11 +521,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Tiles opt out of strict intent matching; kept in sync with the app manifest. -->
         <service
             android:name=".qs.Tile1Service"
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_1"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -536,6 +538,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_2"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -546,6 +549,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_3"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -556,6 +560,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_4"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -566,6 +571,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_5"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -576,6 +582,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_6"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -586,6 +593,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_7"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -596,6 +604,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_8"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -606,6 +615,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_9"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -616,6 +626,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_10"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -626,6 +637,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_11"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -636,6 +648,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_12"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
@@ -646,6 +659,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_13"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -657,6 +671,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_14"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -668,6 +683,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_15"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -679,6 +695,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_16"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -690,6 +707,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_17"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -701,6 +719,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_18"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -712,6 +731,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_19"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -723,6 +743,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_20"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -734,6 +755,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_21"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -745,6 +767,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_22"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -756,6 +779,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_23"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -767,6 +791,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_24"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -778,6 +803,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_25"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -789,6 +815,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_26"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -800,6 +827,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_27"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -811,6 +839,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_28"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -822,6 +851,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_29"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -833,6 +863,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_30"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -844,6 +875,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_31"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -855,6 +887,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_32"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -866,6 +899,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_33"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -877,6 +911,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_34"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -888,6 +923,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_35"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -899,6 +935,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_36"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -910,6 +947,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_37"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -921,6 +959,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_38"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -932,6 +971,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_39"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -943,6 +983,7 @@
             android:icon="@drawable/ic_stat_ic_notification"
             android:label="@string/tile_40"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:intentMatchingFlags="none"
             android:enabled="false"
             android:exported="true">
             <intent-filter>

@@ -69,6 +69,7 @@ class AndroidApplicationDependenciesConventionPlugin : Plugin<Project> {
                     "implementation"(libs.biometric)
                     "implementation"(libs.browser)
                     "implementation"(libs.webkit)
+                    "implementation"(libs.androidx.window)
 
                     "implementation"(libs.bundles.media3)
                     "fullImplementation"(libs.media3.datasource.cronet)
